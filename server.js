@@ -96,6 +96,14 @@ io.on('connection', (socket) => {
                 action: data.action,
                 data: data.gameData
             });
+            
+            if (data.action === 'roundEnd') {
+                room.gameState = 'roundEnd';
+            }
+            
+            if (data.action === 'gameEnd') {
+                room.gameState = 'gameEnd';
+            }
         }
     });
 

@@ -228,6 +228,9 @@ class Game {
         
         // Atualizar a interface
         this.updateUI();
+        
+        // Iniciar o jogo com o primeiro jogador
+        this.currentPlayerIndex = 0;
         this.startTurn();
         
         // Mostrar a tela do jogo
@@ -261,8 +264,29 @@ class Game {
                 }
                 this.updateUI();
             }
+        } else if (data.action === 'dealerHit') {
+            // O dealer comprou uma carta
+            this.dealer.addCard(new Card(data.data.card.suit, data.data.card.value));
+            this.updateUI();
+        } else if (data.action === 'roundEnd') {
+            // Atualizar os vencedores da rodada
+            if (data.data && data.data.winners) {
+                for (let player of this.players) {
+                    if (data.data.winners.includes(player.id)) {
+                        player.roundsWon++;
+                        player.score += 10;
+                    }
+                }
+            }
+            
+            // Mostrar a tela de resultados
+            this.showRoundResults(this.players.filter(p => p.roundsWon > 0));
         } else if (data.action === 'nextRound') {
+            // Avançar para a próxima rodada
             this.nextRound();
+        } else if (data.action === 'gameEnd') {
+            // O jogo terminou
+            this.endGame();
         }
     }
 
@@ -326,11 +350,13 @@ class Game {
     }
 
     dealInitialCards() {
+        // Distribuir 2 cartas para cada jogador
         for (let i = 0; i < 2; i++) {
             for (let player of this.players) {
                 const card = this.deck.draw();
                 player.addCard(card);
                 
+                // No modo online, notificar o servidor sobre a carta distribuída
                 if (this.isOnline && player.id === this.playerId) {
                     this.socket.emit('gameAction', {
                         roomId: this.roomId,
@@ -339,7 +365,19 @@ class Game {
                     });
                 }
             }
-            this.dealer.addCard(this.deck.draw());
+            
+            // Distribuir 2 cartas para o dealer
+            const dealerCard = this.deck.draw();
+            this.dealer.addCard(dealerCard);
+            
+            // No modo online, notificar o servidor sobre a carta do dealer
+            if (this.isOnline && i === 0) {
+                this.socket.emit('gameAction', {
+                    roomId: this.roomId,
+                    action: 'dealerHit',
+                    data: { card: dealerCard }
+                });
+            }
         }
     }
 
@@ -404,6 +442,7 @@ class Game {
             if (!this.isOnline) {
                 this.dealerTurn();
             } else {
+                // No modo online, passar para o próximo jogador
                 this.stand();
             }
         }
@@ -433,11 +472,15 @@ class Game {
         if (!this.isOnline) {
             this.dealerTurn();
         } else {
+            // No modo online, avançar para o próximo jogador
             this.currentPlayerIndex++;
             
+            // Verificar se todos os jogadores já jogaram
             if (this.currentPlayerIndex >= this.players.length) {
+                // Todos os jogadores já jogaram, agora é a vez do dealer
                 this.dealerTurn();
             } else {
+                // Ainda há jogadores para jogar
                 this.startTurn();
             }
         }
@@ -470,23 +513,39 @@ class Game {
             if (!this.isOnline) {
                 this.dealerTurn();
             } else {
+                // No modo online, passar para o próximo jogador
                 this.stand();
             }
         }
     }
 
     dealerTurn() {
+        // O dealer deve comprar cartas até ter pelo menos 17 pontos
         while (this.dealer.getHandValue() < 17) {
-            this.dealer.addCard(this.deck.draw());
+            const card = this.deck.draw();
+            this.dealer.addCard(card);
+            
+            // No modo online, notificar o servidor sobre a carta comprada pelo dealer
+            if (this.isOnline) {
+                this.socket.emit('gameAction', {
+                    roomId: this.roomId,
+                    action: 'dealerHit',
+                    data: { card }
+                });
+            }
         }
         
+        // Atualizar a interface
+        this.updateUI();
+        
+        // Finalizar a rodada
         this.endRound();
     }
 
     endRound() {
         this.gameState = 'roundEnd';
         
-        
+        // Calcular os vencedores da rodada
         const dealerValue = this.dealer.getHandValue();
         const winners = [];
         
@@ -504,7 +563,17 @@ class Game {
             this.dealer.score += 10;
         }
         
+        // Mostrar os resultados da rodada
         this.showRoundResults(winners);
+        
+        // No modo online, notificar o servidor que a rodada terminou
+        if (this.isOnline) {
+            this.socket.emit('gameAction', {
+                roomId: this.roomId,
+                action: 'roundEnd',
+                data: { winners: winners.map(p => p.id) }
+            });
+        }
     }
 
     showRoundResults(winners) {
@@ -518,6 +587,14 @@ class Game {
             resultsDiv.innerHTML += `<p>Banca venceu a rodada!</p>`;
         }
         
+        // Adicionar informações sobre a próxima rodada
+        if (this.currentRound < this.totalRounds) {
+            resultsDiv.innerHTML += `<p>Próxima rodada: ${this.currentRound + 1} de ${this.totalRounds}</p>`;
+        } else {
+            resultsDiv.innerHTML += `<p>Esta foi a última rodada!</p>`;
+        }
+        
+        // Mostrar a tela de resultados
         this.showScreen('results-screen');
     }
 
@@ -529,6 +606,7 @@ class Game {
             return;
         }
         
+        // Resetar o jogo para a próxima rodada
         this.deck.reset();
         for (let player of this.players) {
             player.clearHand();
@@ -545,9 +623,15 @@ class Game {
             });
         }
         
+        // Distribuir as cartas iniciais
         this.dealInitialCards();
+        
+        // Atualizar a interface
         this.updateUI();
         this.startTurn();
+        
+        // Mostrar a tela do jogo
+        this.showScreen('game-screen');
     }
 
     endGame() {
@@ -556,14 +640,25 @@ class Game {
         const finalResults = document.getElementById('final-results');
         finalResults.innerHTML = '';
         
+        // Ordenar os jogadores por pontuação (decrescente)
         const allPlayers = [...this.players, this.dealer].sort((a, b) => b.score - a.score);
         
+        // Exibir os resultados finais
         allPlayers.forEach((player, index) => {
             finalResults.innerHTML += `
                 <p>${index + 1}º Lugar: ${player.name} - ${player.score} pontos (${player.roundsWon} rodadas vencidas)</p>
             `;
         });
         
+        // No modo online, notificar o servidor que o jogo terminou
+        if (this.isOnline) {
+            this.socket.emit('gameAction', {
+                roomId: this.roomId,
+                action: 'gameEnd'
+            });
+        }
+        
+        // Mostrar a tela final
         this.showScreen('final-screen');
     }
 
