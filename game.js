@@ -153,6 +153,9 @@ class Game {
             rounds,
             timeout
         });
+        
+        // Mostrar a tela de carregamento enquanto aguarda a resposta do servidor
+        this.showScreen('loading-screen');
     }
 
     joinRoom(roomId, playerName) {
@@ -187,16 +190,19 @@ class Game {
         const roomInfoElement = document.getElementById('room-info');
         if (roomInfoElement) {
             roomInfoElement.innerHTML = `
-                <h3>Sala: ${this.roomId}</h3>
-                <p>Compartilhe este código com seus amigos para jogarem juntos!</p>
+                <div class="room-code">
+                    <h3>Código da Sala: <span class="code">${this.roomId}</span></h3>
+                    <p>Compartilhe este código com seus amigos para jogarem juntos!</p>
+                </div>
                 <div id="players-list"></div>
-                <button id="start-game-btn" class="btn-primary">Iniciar Jogo</button>
+                <div class="waiting-message">
+                    <p>Aguardando mais jogadores para iniciar o jogo...</p>
+                </div>
             `;
-            
-            document.getElementById('start-game-btn').addEventListener('click', () => {
-                this.socket.emit('startGame', { roomId: this.roomId });
-            });
         }
+        
+        // Mostrar a tela da sala
+        this.showScreen('room-screen');
     }
 
     initializeOnlineGame(data) {
@@ -205,25 +211,26 @@ class Game {
         this.currentRound = 1;
         this.gameState = 'playing';
         
-
         this.players = [];
         
-        
+        // Adicionar os jogadores
         data.players.forEach(playerData => {
             const player = new Player(playerData.name, playerData.id);
             player.isHost = playerData.isHost;
             this.players.push(player);
         });
         
-        
+        // Adicionar o dealer
         this.dealer = new Player('Banca');
         
-        
+        // Distribuir as cartas iniciais
         this.dealInitialCards();
         
+        // Atualizar a interface
         this.updateUI();
         this.startTurn();
         
+        // Mostrar a tela do jogo
         this.showScreen('game-screen');
     }
 
@@ -285,34 +292,37 @@ class Game {
         this.players = [];
         this.dealer = new Player('Banca');
         
+        // Para jogo local, sempre criamos apenas um jogador (o usuário)
         const container = document.getElementById('player-names-container');
         container.innerHTML = '';
         
-        for (let i = 0; i < playerCount; i++) {
-            const input = document.createElement('div');
-            input.className = 'input-group';
-            input.innerHTML = `
-                <label for="player${i}">Nome do Jogador ${i + 1}:</label>
-                <input type="text" id="player${i}" required>
-            `;
-            container.appendChild(input);
-        }
+        const input = document.createElement('div');
+        input.className = 'input-group';
+        input.innerHTML = `
+            <label for="player0">Seu Nome:</label>
+            <input type="text" id="player0" required>
+        `;
+        container.appendChild(input);
     }
 
     startGame() {
-        const playerCount = parseInt(document.getElementById('player-count').value);
-        for (let i = 0; i < playerCount; i++) {
-            const name = document.getElementById(`player${i}`).value.trim();
-            if (!name) {
-                alert('Por favor, insira o nome de todos os jogadores.');
-                return;
-            }
-            this.players.push(new Player(name));
+        // Para jogo local, sempre criamos apenas um jogador (o usuário)
+        const name = document.getElementById('player0').value.trim();
+        if (!name) {
+            alert('Por favor, insira seu nome.');
+            return;
         }
-
+        
+        // Criar apenas um jogador (o usuário)
+        this.players = [new Player(name)];
+        
+        // Iniciar o jogo
         this.dealInitialCards();
         this.updateUI();
         this.startTurn();
+        
+        // Mostrar a tela do jogo
+        this.showScreen('game-screen');
     }
 
     dealInitialCards() {
@@ -339,27 +349,29 @@ class Game {
         const currentPlayer = this.players[this.currentPlayerIndex];
         document.getElementById('current-player').textContent = `Vez de: ${currentPlayer.name}`;
         
-        
+        // No jogo local, sempre é a vez do jogador
         const isMyTurn = !this.isOnline || currentPlayer.id === this.playerId;
         
-        
+        // Habilitar os botões de ação apenas se for a vez do jogador
         document.getElementById('hit-btn').disabled = !isMyTurn;
         document.getElementById('stand-btn').disabled = !isMyTurn;
         document.getElementById('double-btn').disabled = !isMyTurn || currentPlayer.hand.length !== 2;
         
-        
-        let timeLeft = this.timeout;
-        this.updateTimer(timeLeft);
-        
-        this.timer = setInterval(() => {
-            timeLeft--;
+        // Iniciar o temporizador apenas se for a vez do jogador
+        if (isMyTurn) {
+            let timeLeft = this.timeout;
             this.updateTimer(timeLeft);
             
-            if (timeLeft <= 0) {
-                clearInterval(this.timer);
-                this.stand();
-            }
-        }, 1000);
+            this.timer = setInterval(() => {
+                timeLeft--;
+                this.updateTimer(timeLeft);
+                
+                if (timeLeft <= 0) {
+                    clearInterval(this.timer);
+                    this.stand();
+                }
+            }, 1000);
+        }
     }
 
     updateTimer(timeLeft) {
@@ -386,8 +398,14 @@ class Game {
             });
         }
         
+        // Verificar se o jogador estourou (mais de 21)
         if (currentPlayer.getHandValue() > 21) {
-            this.stand();
+            // No jogo local, após o jogador estourar, é a vez do dealer
+            if (!this.isOnline) {
+                this.dealerTurn();
+            } else {
+                this.stand();
+            }
         }
         
         this.updateUI();
@@ -411,12 +429,17 @@ class Game {
             });
         }
         
-        this.currentPlayerIndex++;
-        
-        if (this.currentPlayerIndex >= this.players.length) {
+        // No jogo local, após o jogador parar, é a vez do dealer
+        if (!this.isOnline) {
             this.dealerTurn();
         } else {
-            this.startTurn();
+            this.currentPlayerIndex++;
+            
+            if (this.currentPlayerIndex >= this.players.length) {
+                this.dealerTurn();
+            } else {
+                this.startTurn();
+            }
         }
         
         this.updateUI();
@@ -443,7 +466,12 @@ class Game {
                 });
             }
             
-            this.stand();
+            // No jogo local, após dobrar, é a vez do dealer
+            if (!this.isOnline) {
+                this.dealerTurn();
+            } else {
+                this.stand();
+            }
         }
     }
 

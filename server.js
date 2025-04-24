@@ -63,7 +63,7 @@ io.on('connection', (socket) => {
         socket.join(data.roomId);
         io.to(data.roomId).emit('playerJoined', { players: room.players });
         
-        if (room.players.length === room.settings.playerCount) {
+        if (room.players.length >= 2) {
             room.gameState = 'playing';
             io.to(data.roomId).emit('gameStarted', {
                 settings: room.settings,
@@ -75,6 +75,11 @@ io.on('connection', (socket) => {
     socket.on('startGame', (data) => {
         const room = rooms[data.roomId];
         if (room && room.players.find(p => p.id === socket.id)?.isHost) {
+            if (room.players.length < 2) {
+                socket.emit('error', { message: 'É necessário pelo menos 2 jogadores para iniciar o jogo' });
+                return;
+            }
+            
             room.gameState = 'playing';
             io.to(data.roomId).emit('gameStarted', {
                 settings: room.settings,

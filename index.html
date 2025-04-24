@@ -16,7 +16,7 @@
             <div class="game-setup">
                 <h2>Jogar Localmente</h2>
                 <div class="input-group">
-                    <label for="player-count">Número de Jogadores (2-4):</label>
+                    <label for="player-count">Número de Jogadores (1):</label>
                     <input type="number" id="player-count" min="2" max="4" value="2">
                 </div>
                 <div class="input-group">
@@ -77,6 +77,13 @@
             <h2>Fim do Jogo</h2>
             <div id="final-results"></div>
             <button id="new-game" class="btn-primary">Novo Jogo</button>
+        </div>
+        
+        <!-- Tela de carregamento -->
+        <div id="loading-screen" class="screen">
+            <h2>Carregando...</h2>
+            <div class="loading-spinner"></div>
+            <p>Por favor, aguarde enquanto conectamos ao servidor...</p>
         </div>
     </div>
     <script src="game.js"></script>
