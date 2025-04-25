@@ -99,6 +99,7 @@ class Game {
         this.roomId = null;
         this.playerId = null;
         this.isOnline = false;
+        this.dealerSecondCardVisible = false;
     }
 
     connectToServer() {
@@ -350,11 +351,15 @@ class Game {
     }
 
     dealInitialCards() {
+        console.log("Distribuindo cartas iniciais");
+        
         // Distribuir 2 cartas para cada jogador
         for (let i = 0; i < 2; i++) {
             for (let player of this.players) {
                 const card = this.deck.draw();
                 player.addCard(card);
+                
+                console.log(`Jogador ${player.name} recebeu carta: ${card.toString()}`);
                 
                 // No modo online, notificar o servidor sobre a carta distribuída
                 if (this.isOnline && player.id === this.playerId) {
@@ -370,6 +375,8 @@ class Game {
             const dealerCard = this.deck.draw();
             this.dealer.addCard(dealerCard);
             
+            console.log(`Dealer recebeu carta: ${dealerCard.toString()}`);
+            
             // No modo online, notificar o servidor sobre a carta do dealer
             if (this.isOnline && i === 0) {
                 this.socket.emit('gameAction', {
@@ -379,6 +386,9 @@ class Game {
                 });
             }
         }
+        
+        console.log("Cartas iniciais distribuídas");
+        console.log("Cartas do dealer:", this.dealer.hand);
     }
 
     startTurn() {
@@ -438,9 +448,18 @@ class Game {
         
         // Verificar se o jogador estourou (mais de 21)
         if (currentPlayer.getHandValue() > 21) {
-            // No jogo local, após o jogador estourar, é a vez do dealer
+            // No jogo local, após o jogador estourar, passar para o próximo jogador
             if (!this.isOnline) {
-                this.dealerTurn();
+                this.currentPlayerIndex++;
+                
+                // Verificar se todos os jogadores já jogaram
+                if (this.currentPlayerIndex >= this.players.length) {
+                    // Todos os jogadores já jogaram, agora é a vez do dealer
+                    this.dealerTurn();
+                } else {
+                    // Ainda há jogadores para jogar
+                    this.startTurn();
+                }
             } else {
                 // No modo online, passar para o próximo jogador
                 this.stand();
@@ -470,7 +489,16 @@ class Game {
         
         // No jogo local, após o jogador parar, é a vez do dealer
         if (!this.isOnline) {
-            this.dealerTurn();
+            this.currentPlayerIndex++;
+            
+            // Verificar se todos os jogadores já jogaram
+            if (this.currentPlayerIndex >= this.players.length) {
+                // Todos os jogadores já jogaram, agora é a vez do dealer
+                this.dealerTurn();
+            } else {
+                // Ainda há jogadores para jogar
+                this.startTurn();
+            }
         } else {
             // No modo online, avançar para o próximo jogador
             this.currentPlayerIndex++;
@@ -509,37 +537,70 @@ class Game {
                 });
             }
             
-            // No jogo local, após dobrar, é a vez do dealer
+            // No jogo local, após dobrar, passar para o próximo jogador
             if (!this.isOnline) {
-                this.dealerTurn();
+                this.currentPlayerIndex++;
+                
+                // Verificar se todos os jogadores já jogaram
+                if (this.currentPlayerIndex >= this.players.length) {
+                    // Todos os jogadores já jogaram, agora é a vez do dealer
+                    this.dealerTurn();
+                } else {
+                    // Ainda há jogadores para jogar
+                    this.startTurn();
+                }
             } else {
                 // No modo online, passar para o próximo jogador
                 this.stand();
             }
         }
+        
+        this.updateUI();
     }
 
     dealerTurn() {
-        // O dealer deve comprar cartas até ter pelo menos 17 pontos
-        while (this.dealer.getHandValue() < 17) {
-            const card = this.deck.draw();
-            this.dealer.addCard(card);
-            
-            // No modo online, notificar o servidor sobre a carta comprada pelo dealer
-            if (this.isOnline) {
-                this.socket.emit('gameAction', {
-                    roomId: this.roomId,
-                    action: 'dealerHit',
-                    data: { card }
-                });
-            }
-        }
+        console.log("Dealer turn iniciado");
+        console.log("Cartas do dealer antes de revelar:", this.dealer.hand);
         
-        // Atualizar a interface
+        // Revelar a segunda carta do dealer
+        this.dealerSecondCardVisible = true;
         this.updateUI();
         
-        // Finalizar a rodada
-        this.endRound();
+        console.log("Segunda carta do dealer revelada");
+        console.log("Cartas do dealer após revelar:", this.dealer.hand);
+        
+        // Pequeno delay para que os jogadores possam ver a segunda carta antes do dealer começar a comprar
+        setTimeout(() => {
+            console.log("Dealer começando a comprar cartas");
+            console.log("Valor atual do dealer:", this.dealer.getHandValue());
+            
+            // O dealer deve comprar cartas até ter pelo menos 17 pontos
+            while (this.dealer.getHandValue() < 17) {
+                const card = this.deck.draw();
+                this.dealer.addCard(card);
+                
+                console.log("Dealer comprou carta:", card.toString());
+                console.log("Novo valor do dealer:", this.dealer.getHandValue());
+                
+                // No modo online, notificar o servidor sobre a carta comprada pelo dealer
+                if (this.isOnline) {
+                    this.socket.emit('gameAction', {
+                        roomId: this.roomId,
+                        action: 'dealerHit',
+                        data: { card }
+                    });
+                }
+                
+                // Atualizar a interface após cada carta comprada
+                this.updateUI();
+            }
+            
+            console.log("Dealer terminou de comprar cartas");
+            console.log("Valor final do dealer:", this.dealer.getHandValue());
+            
+            // Finalizar a rodada
+            this.endRound();
+        }, 1000); // Delay de 1 segundo para melhor experiência do usuário
     }
 
     endRound() {
@@ -612,6 +673,7 @@ class Game {
             player.clearHand();
         }
         this.dealer.clearHand();
+        this.dealerSecondCardVisible = false;
         
         this.currentPlayerIndex = 0;
         this.gameState = 'playing';
@@ -663,6 +725,10 @@ class Game {
     }
 
     updateUI() {
+        console.log("Atualizando interface");
+        console.log("dealerSecondCardVisible:", this.dealerSecondCardVisible);
+        console.log("Cartas do dealer:", this.dealer.hand);
+        
         const scoreboard = document.getElementById('scoreboard');
         scoreboard.innerHTML = '';
         
@@ -672,16 +738,25 @@ class Game {
             `;
         });
         
-        
         document.getElementById('current-round').textContent = `Rodada ${this.currentRound}/${this.totalRounds}`;
-        
         
         const dealerCards = document.getElementById('dealer-cards');
         dealerCards.innerHTML = '';
-        this.dealer.hand.forEach(card => {
-            dealerCards.innerHTML += `<div class="card">${card.toString()}</div>`;
-        });
         
+        // Mostrar apenas a primeira carta do dealer se a segunda ainda não estiver visível
+        if (!this.dealerSecondCardVisible && this.dealer.hand.length > 1) {
+            console.log("Mostrando apenas a primeira carta do dealer");
+            // Mostrar a primeira carta
+            dealerCards.innerHTML += `<div class="card">${this.dealer.hand[0].toString()}</div>`;
+            // Mostrar a segunda carta como escondida
+            dealerCards.innerHTML += `<div class="card hidden">🂠</div>`;
+        } else {
+            console.log("Mostrando todas as cartas do dealer");
+            // Mostrar todas as cartas do dealer
+            this.dealer.hand.forEach(card => {
+                dealerCards.innerHTML += `<div class="card">${card.toString()}</div>`;
+            });
+        }
         
         const playersArea = document.getElementById('players-area');
         playersArea.innerHTML = '';
@@ -698,6 +773,8 @@ class Game {
             `;
             playersArea.appendChild(playerDiv);
         });
+        
+        console.log("Interface atualizada");
     }
 
     showScreen(screenId) {
