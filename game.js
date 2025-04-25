@@ -106,7 +106,6 @@ class Game {
         this.socket = io();
         this.isOnline = true;
         
-        
         this.socket.on('connect', () => {
             this.playerId = this.socket.id;
             console.log('Conectado ao servidor com ID:', this.playerId);
@@ -126,19 +125,229 @@ class Game {
             this.initializeOnlineGame(data);
         });
         
-        this.socket.on('gameAction', (data) => {
-            this.handleGameAction(data);
+        this.socket.on('cardsDealt', (data) => {
+            console.log("Cartas distribuídas pelo servidor:", data);
+            
+            // Atualizar as mãos dos jogadores
+            data.players.forEach(playerData => {
+                const player = this.players.find(p => p.id === playerData.id);
+                if (player) {
+                    player.hand = playerData.hand.map(cardData => new Card(cardData.suit, cardData.value));
+                }
+            });
+            
+            // Atualizar a mão do dealer
+            this.dealer.hand = [];
+            if (data.dealer.hand[0]) {
+                this.dealer.addCard(new Card(data.dealer.hand[0].suit, data.dealer.hand[0].value));
+            }
+            
+            // Atualizar a interface
+            this.updateUI();
+        });
+        
+        this.socket.on('currentPlayer', (data) => {
+            console.log("Jogador atual:", data.playerId);
+            
+            // Limpar qualquer temporizador existente
+            if (this.timer) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+            
+            // Encontrar o índice do jogador atual
+            this.currentPlayerIndex = this.players.findIndex(p => p.id === data.playerId);
+            
+            // Atualizar o timeout se fornecido pelo servidor
+            if (data.timeout) {
+                this.timeout = data.timeout;
+            }
+            
+            // Atualizar a interface
+            this.updateUI();
+            
+            // Iniciar o turno do jogador atual
+            this.startTurn();
+        });
+        
+        this.socket.on('cardDrawn', (data) => {
+            console.log("Carta comprada:", data);
+            
+            // Adicionar a carta à mão do jogador
+            const player = this.players.find(p => p.id === data.playerId);
+            if (player) {
+                player.addCard(new Card(data.card.suit, data.card.value));
+            }
+            
+            // Atualizar a interface
+            this.updateUI();
+        });
+        
+        this.socket.on('dealerTurn', () => {
+            console.log("É a vez do dealer");
+            
+            // Limpar qualquer temporizador existente
+            if (this.timer) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+            
+            // Revelar a segunda carta do dealer
+            this.dealerSecondCardVisible = true;
+            this.updateUI();
+            
+            // Notificar o servidor que o dealer está jogando
+            this.socket.emit('gameAction', {
+                roomId: this.roomId,
+                action: 'dealerTurn'
+            });
+        });
+        
+        this.socket.on('dealerSecondCardRevealed', (data) => {
+            console.log("Segunda carta do dealer revelada:", data);
+            
+            // Adicionar a segunda carta à mão do dealer
+            this.dealer.addCard(new Card(data.card.suit, data.card.value));
+            
+            // Atualizar a interface
+            this.updateUI();
+        });
+        
+        this.socket.on('dealerCardDrawn', (data) => {
+            console.log("Dealer comprou carta:", data);
+            
+            // Adicionar a carta à mão do dealer
+            this.dealer.addCard(new Card(data.card.suit, data.card.value));
+            
+            // Atualizar a interface
+            this.updateUI();
+        });
+        
+        this.socket.on('roundEnded', (data) => {
+            console.log("Rodada terminou:", data);
+            
+            // Limpar qualquer temporizador existente
+            if (this.timer) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+            
+            // Atualizar a mão do dealer
+            this.dealer.hand = data.dealer.hand.map(cardData => new Card(cardData.suit, cardData.value));
+            
+            // Calcular os vencedores da rodada
+            const dealerValue = this.dealer.getHandValue();
+            const winners = [];
+            
+            for (let player of this.players) {
+                const playerValue = player.getHandValue();
+                if (playerValue <= 21 && (dealerValue > 21 || playerValue > dealerValue)) {
+                    winners.push(player);
+                    player.roundsWon++;
+                    player.score += 10;
+                }
+            }
+            
+            if (dealerValue <= 21 && winners.length === 0) {
+                this.dealer.roundsWon++;
+                this.dealer.score += 10;
+            }
+            
+            // Mostrar os resultados da rodada
+            this.showRoundResults(winners);
+            
+            // Atualizar a interface
+            this.updateUI();
+        });
+        
+        this.socket.on('nextRound', (data) => {
+            console.log("Próxima rodada:", data);
+            
+            // Limpar qualquer temporizador existente
+            if (this.timer) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+            
+            // Avançar para a próxima rodada
+            this.currentRound = data.round;
+            
+            // Resetar o jogo para a próxima rodada
+            this.deck.reset();
+            for (let player of this.players) {
+                player.clearHand();
+            }
+            this.dealer.clearHand();
+            this.dealerSecondCardVisible = false;
+            
+            this.currentPlayerIndex = 0;
+            this.gameState = 'playing';
+            
+            // Solicitar novas cartas ao servidor
+            this.socket.emit('dealInitialCards', {
+                roomId: this.roomId
+            });
+            
+            // Mostrar a tela do jogo
+            this.showScreen('game-screen');
+        });
+        
+        this.socket.on('gameEnded', (data) => {
+            console.log("Jogo terminou:", data);
+            
+            // Limpar qualquer temporizador existente
+            if (this.timer) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+            
+            // Atualizar os jogadores com os dados finais
+            data.players.forEach(playerData => {
+                const player = this.players.find(p => p.id === playerData.id);
+                if (player) {
+                    player.score = playerData.score || 0;
+                    player.roundsWon = playerData.roundsWon || 0;
+                }
+            });
+            
+            // Mostrar a tela final
+            this.endGame();
         });
         
         this.socket.on('playerLeft', (data) => {
-            this.handlePlayerLeft(data);
+            console.log("Jogador saiu:", data);
+            
+            // Limpar qualquer temporizador existente
+            if (this.timer) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+            
+            // Remover o jogador da lista
+            this.players = this.players.filter(p => p.id !== data.playerId);
+            
+            // Atualizar a lista de jogadores
+            this.updatePlayersList(data.players);
+            
+            // Atualizar a interface
+            this.updateUI();
         });
         
         this.socket.on('gamePaused', (data) => {
-            this.handleGamePaused(data);
+            console.log("Jogo pausado:", data);
+            
+            // Limpar qualquer temporizador existente
+            if (this.timer) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+            
+            this.gameState = 'paused';
+            alert(data.message);
         });
         
         this.socket.on('error', (data) => {
+            console.error("Erro:", data);
             alert(data.message);
         });
     }
@@ -224,171 +433,13 @@ class Game {
         // Adicionar o dealer
         this.dealer = new Player('Banca');
         
-        // Distribuir as cartas iniciais
-        this.dealInitialCards();
-        
-        // Atualizar a interface
-        this.updateUI();
-        
-        // Iniciar o jogo com o primeiro jogador
-        this.currentPlayerIndex = 0;
-        this.startTurn();
+        // Solicitar cartas ao servidor
+        this.socket.emit('dealInitialCards', {
+            roomId: this.roomId
+        });
         
         // Mostrar a tela do jogo
         this.showScreen('game-screen');
-    }
-
-    handleGameAction(data) {
-        if (data.action === 'hit') {
-            const player = this.players.find(p => p.id === data.playerId);
-            if (player) {
-                player.addCard(new Card(data.data.card.suit, data.data.card.value));
-                this.updateUI();
-            }
-        } else if (data.action === 'stand') {
-            this.currentPlayerIndex++;
-            if (this.currentPlayerIndex >= this.players.length) {
-                this.dealerTurn();
-            } else {
-                this.startTurn();
-            }
-            this.updateUI();
-        } else if (data.action === 'double') {
-            const player = this.players.find(p => p.id === data.playerId);
-            if (player && player.hand.length === 2) {
-                player.addCard(new Card(data.data.card.suit, data.data.card.value));
-                this.currentPlayerIndex++;
-                if (this.currentPlayerIndex >= this.players.length) {
-                    this.dealerTurn();
-                } else {
-                    this.startTurn();
-                }
-                this.updateUI();
-            }
-        } else if (data.action === 'dealerHit') {
-            // O dealer comprou uma carta
-            this.dealer.addCard(new Card(data.data.card.suit, data.data.card.value));
-            this.updateUI();
-        } else if (data.action === 'roundEnd') {
-            // Atualizar os vencedores da rodada
-            if (data.data && data.data.winners) {
-                for (let player of this.players) {
-                    if (data.data.winners.includes(player.id)) {
-                        player.roundsWon++;
-                        player.score += 10;
-                    }
-                }
-            }
-            
-            // Mostrar a tela de resultados
-            this.showRoundResults(this.players.filter(p => p.roundsWon > 0));
-        } else if (data.action === 'nextRound') {
-            // Avançar para a próxima rodada
-            this.nextRound();
-        } else if (data.action === 'gameEnd') {
-            // O jogo terminou
-            this.endGame();
-        }
-    }
-
-    handlePlayerLeft(data) {
-        this.players = this.players.filter(p => p.id !== data.playerId);
-        
-        this.updateUI();
-        
-        if (this.gameState === 'playing') {
-            this.gameState = 'paused';
-            alert('Um jogador desconectou. O jogo foi pausado.');
-        }
-    }
-
-    handleGamePaused(data) {
-        this.gameState = 'paused';
-        alert(data.message);
-    }
-
-    initializeGame(playerCount, rounds, timeout) {
-        this.totalRounds = rounds;
-        this.timeout = timeout;
-        this.currentRound = 1;
-        this.gameState = 'playing';
-        this.deck.reset();
-        
-        this.players = [];
-        this.dealer = new Player('Banca');
-        
-        // Para jogo local, sempre criamos apenas um jogador (o usuário)
-        const container = document.getElementById('player-names-container');
-        container.innerHTML = '';
-        
-        const input = document.createElement('div');
-        input.className = 'input-group';
-        input.innerHTML = `
-            <label for="player0">Seu Nome:</label>
-            <input type="text" id="player0" required>
-        `;
-        container.appendChild(input);
-    }
-
-    startGame() {
-        // Para jogo local, sempre criamos apenas um jogador (o usuário)
-        const name = document.getElementById('player0').value.trim();
-        if (!name) {
-            alert('Por favor, insira seu nome.');
-            return;
-        }
-        
-        // Criar apenas um jogador (o usuário)
-        this.players = [new Player(name)];
-        
-        // Iniciar o jogo
-        this.dealInitialCards();
-        this.updateUI();
-        this.startTurn();
-        
-        // Mostrar a tela do jogo
-        this.showScreen('game-screen');
-    }
-
-    dealInitialCards() {
-        console.log("Distribuindo cartas iniciais");
-        
-        // Distribuir 2 cartas para cada jogador
-        for (let i = 0; i < 2; i++) {
-            for (let player of this.players) {
-                const card = this.deck.draw();
-                player.addCard(card);
-                
-                console.log(`Jogador ${player.name} recebeu carta: ${card.toString()}`);
-                
-                // No modo online, notificar o servidor sobre a carta distribuída
-                if (this.isOnline && player.id === this.playerId) {
-                    this.socket.emit('gameAction', {
-                        roomId: this.roomId,
-                        action: 'hit',
-                        data: { card }
-                    });
-                }
-            }
-            
-            // Distribuir 2 cartas para o dealer
-            const dealerCard = this.deck.draw();
-            this.dealer.addCard(dealerCard);
-            
-            console.log(`Dealer recebeu carta: ${dealerCard.toString()}`);
-            
-            // No modo online, notificar o servidor sobre a carta do dealer
-            if (this.isOnline && i === 0) {
-                this.socket.emit('gameAction', {
-                    roomId: this.roomId,
-                    action: 'dealerHit',
-                    data: { card: dealerCard }
-                });
-            }
-        }
-        
-        console.log("Cartas iniciais distribuídas");
-        console.log("Cartas do dealer:", this.dealer.hand);
     }
 
     startTurn() {
@@ -397,7 +448,7 @@ class Game {
         const currentPlayer = this.players[this.currentPlayerIndex];
         document.getElementById('current-player').textContent = `Vez de: ${currentPlayer.name}`;
         
-        // No jogo local, sempre é a vez do jogador
+        // No jogo online, verificar se é a vez do jogador atual
         const isMyTurn = !this.isOnline || currentPlayer.id === this.playerId;
         
         // Habilitar os botões de ação apenas se for a vez do jogador
@@ -410,6 +461,11 @@ class Game {
             let timeLeft = this.timeout;
             this.updateTimer(timeLeft);
             
+            // Limpar qualquer temporizador existente
+            if (this.timer) {
+                clearInterval(this.timer);
+            }
+            
             this.timer = setInterval(() => {
                 timeLeft--;
                 this.updateTimer(timeLeft);
@@ -419,6 +475,9 @@ class Game {
                     this.stand();
                 }
             }, 1000);
+        } else {
+            // Se não for a vez do jogador, mostrar o temporizador como "Aguardando..."
+            document.getElementById('timer').textContent = "Aguardando...";
         }
     }
 
@@ -435,21 +494,20 @@ class Game {
             return;
         }
         
-        const card = this.deck.draw();
-        currentPlayer.addCard(card);
-        
         if (this.isOnline) {
+            // No modo online, solicitar uma carta ao servidor
             this.socket.emit('gameAction', {
                 roomId: this.roomId,
-                action: 'hit',
-                data: { card }
+                action: 'hit'
             });
-        }
-        
-        // Verificar se o jogador estourou (mais de 21)
-        if (currentPlayer.getHandValue() > 21) {
-            // No jogo local, após o jogador estourar, passar para o próximo jogador
-            if (!this.isOnline) {
+        } else {
+            // No modo local, comprar uma carta localmente
+            const card = this.deck.draw();
+            currentPlayer.addCard(card);
+            
+            // Verificar se o jogador estourou (mais de 21)
+            if (currentPlayer.getHandValue() > 21) {
+                // Passar para o próximo jogador
                 this.currentPlayerIndex++;
                 
                 // Verificar se todos os jogadores já jogaram
@@ -460,13 +518,11 @@ class Game {
                     // Ainda há jogadores para jogar
                     this.startTurn();
                 }
-            } else {
-                // No modo online, passar para o próximo jogador
-                this.stand();
             }
+            
+            // Atualizar a interface
+            this.updateUI();
         }
-        
-        this.updateUI();
     }
 
     stand() {
@@ -481,26 +537,13 @@ class Game {
         clearInterval(this.timer);
         
         if (this.isOnline) {
+            // No modo online, notificar o servidor que o jogador parou
             this.socket.emit('gameAction', {
                 roomId: this.roomId,
                 action: 'stand'
             });
-        }
-        
-        // No jogo local, após o jogador parar, é a vez do dealer
-        if (!this.isOnline) {
-            this.currentPlayerIndex++;
-            
-            // Verificar se todos os jogadores já jogaram
-            if (this.currentPlayerIndex >= this.players.length) {
-                // Todos os jogadores já jogaram, agora é a vez do dealer
-                this.dealerTurn();
-            } else {
-                // Ainda há jogadores para jogar
-                this.startTurn();
-            }
         } else {
-            // No modo online, avançar para o próximo jogador
+            // No modo local, passar para o próximo jogador
             this.currentPlayerIndex++;
             
             // Verificar se todos os jogadores já jogaram
@@ -511,9 +554,10 @@ class Game {
                 // Ainda há jogadores para jogar
                 this.startTurn();
             }
+            
+            // Atualizar a interface
+            this.updateUI();
         }
-        
-        this.updateUI();
     }
 
     double() {
@@ -526,19 +570,18 @@ class Game {
         }
         
         if (currentPlayer.hand.length === 2) {
-            const card = this.deck.draw();
-            currentPlayer.addCard(card);
-            
             if (this.isOnline) {
+                // No modo online, solicitar uma carta ao servidor
                 this.socket.emit('gameAction', {
                     roomId: this.roomId,
-                    action: 'double',
-                    data: { card }
+                    action: 'double'
                 });
-            }
-            
-            // No jogo local, após dobrar, passar para o próximo jogador
-            if (!this.isOnline) {
+            } else {
+                // No modo local, comprar uma carta localmente
+                const card = this.deck.draw();
+                currentPlayer.addCard(card);
+                
+                // Passar para o próximo jogador
                 this.currentPlayerIndex++;
                 
                 // Verificar se todos os jogadores já jogaram
@@ -549,13 +592,11 @@ class Game {
                     // Ainda há jogadores para jogar
                     this.startTurn();
                 }
-            } else {
-                // No modo online, passar para o próximo jogador
-                this.stand();
+                
+                // Atualizar a interface
+                this.updateUI();
             }
         }
-        
-        this.updateUI();
     }
 
     dealerTurn() {
@@ -581,15 +622,6 @@ class Game {
                 
                 console.log("Dealer comprou carta:", card.toString());
                 console.log("Novo valor do dealer:", this.dealer.getHandValue());
-                
-                // No modo online, notificar o servidor sobre a carta comprada pelo dealer
-                if (this.isOnline) {
-                    this.socket.emit('gameAction', {
-                        roomId: this.roomId,
-                        action: 'dealerHit',
-                        data: { card }
-                    });
-                }
                 
                 // Atualizar a interface após cada carta comprada
                 this.updateUI();
@@ -631,8 +663,7 @@ class Game {
         if (this.isOnline) {
             this.socket.emit('gameAction', {
                 roomId: this.roomId,
-                action: 'roundEnd',
-                data: { winners: winners.map(p => p.id) }
+                action: 'roundEnd'
             });
         }
     }
@@ -657,43 +688,6 @@ class Game {
         
         // Mostrar a tela de resultados
         this.showScreen('results-screen');
-    }
-
-    nextRound() {
-        this.currentRound++;
-        
-        if (this.currentRound > this.totalRounds) {
-            this.endGame();
-            return;
-        }
-        
-        // Resetar o jogo para a próxima rodada
-        this.deck.reset();
-        for (let player of this.players) {
-            player.clearHand();
-        }
-        this.dealer.clearHand();
-        this.dealerSecondCardVisible = false;
-        
-        this.currentPlayerIndex = 0;
-        this.gameState = 'playing';
-        
-        if (this.isOnline) {
-            this.socket.emit('gameAction', {
-                roomId: this.roomId,
-                action: 'nextRound'
-            });
-        }
-        
-        // Distribuir as cartas iniciais
-        this.dealInitialCards();
-        
-        // Atualizar a interface
-        this.updateUI();
-        this.startTurn();
-        
-        // Mostrar a tela do jogo
-        this.showScreen('game-screen');
     }
 
     endGame() {
