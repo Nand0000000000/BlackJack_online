@@ -451,6 +451,13 @@ class Game {
         // No jogo online, verificar se é a vez do jogador atual
         const isMyTurn = !this.isOnline || currentPlayer.id === this.playerId;
         
+        console.log("Iniciando turno:", {
+            currentPlayerId: currentPlayer.id,
+            myPlayerId: this.playerId,
+            isMyTurn: isMyTurn,
+            currentPlayerName: currentPlayer.name
+        });
+        
         // Habilitar os botões de ação apenas se for a vez do jogador
         document.getElementById('hit-btn').disabled = !isMyTurn;
         document.getElementById('stand-btn').disabled = !isMyTurn;
@@ -490,12 +497,20 @@ class Game {
 
         const currentPlayer = this.players[this.currentPlayerIndex];
         
+        console.log("Tentando hit:", {
+            currentPlayerId: currentPlayer.id,
+            myPlayerId: this.playerId,
+            isMyTurn: currentPlayer.id === this.playerId
+        });
+        
         if (this.isOnline && currentPlayer.id !== this.playerId) {
+            console.log("Não é sua vez de jogar!");
             return;
         }
         
         if (this.isOnline) {
             // No modo online, solicitar uma carta ao servidor
+            console.log("Enviando ação 'hit' para o servidor");
             this.socket.emit('gameAction', {
                 roomId: this.roomId,
                 action: 'hit'
@@ -530,7 +545,14 @@ class Game {
 
         const currentPlayer = this.players[this.currentPlayerIndex];
         
+        console.log("Tentando stand:", {
+            currentPlayerId: currentPlayer.id,
+            myPlayerId: this.playerId,
+            isMyTurn: currentPlayer.id === this.playerId
+        });
+        
         if (this.isOnline && currentPlayer.id !== this.playerId) {
+            console.log("Não é sua vez de jogar!");
             return;
         }
         
@@ -538,6 +560,7 @@ class Game {
         
         if (this.isOnline) {
             // No modo online, notificar o servidor que o jogador parou
+            console.log("Enviando ação 'stand' para o servidor");
             this.socket.emit('gameAction', {
                 roomId: this.roomId,
                 action: 'stand'
@@ -565,13 +588,21 @@ class Game {
 
         const currentPlayer = this.players[this.currentPlayerIndex];
         
+        console.log("Tentando double:", {
+            currentPlayerId: currentPlayer.id,
+            myPlayerId: this.playerId,
+            isMyTurn: currentPlayer.id === this.playerId
+        });
+        
         if (this.isOnline && currentPlayer.id !== this.playerId) {
+            console.log("Não é sua vez de jogar!");
             return;
         }
         
         if (currentPlayer.hand.length === 2) {
             if (this.isOnline) {
                 // No modo online, solicitar uma carta ao servidor
+                console.log("Enviando ação 'double' para o servidor");
                 this.socket.emit('gameAction', {
                     roomId: this.roomId,
                     action: 'double'

@@ -181,23 +181,45 @@ io.on('connection', (socket) => {
     });
 
     socket.on('gameAction', (data) => {
-        const room = rooms[data.roomId];
-        if (room && room.gameState === 'playing') {
-            const currentPlayer = room.players[room.currentPlayerIndex];
-            
-            // Verificar se é a vez do jogador
-            if (currentPlayer.id !== socket.id) {
-                socket.emit('error', { message: 'Não é sua vez de jogar' });
-                return;
-            }
-            
-            if (data.action === 'hit') {
+        const { roomId, action } = data;
+        const room = rooms[roomId];
+        
+        if (!room) {
+            socket.emit('error', { message: 'Sala não encontrada' });
+            return;
+        }
+        
+        // Verificar se o jogo está em andamento
+        if (room.gameState !== 'playing') {
+            socket.emit('error', { message: 'O jogo não está em andamento' });
+            return;
+        }
+        
+        // Verificar se é a vez do jogador
+        const currentPlayer = room.players[room.currentPlayerIndex];
+        
+        console.log("Processando ação:", {
+            action: action,
+            currentPlayerId: currentPlayer.id,
+            socketId: socket.id,
+            isMyTurn: currentPlayer.id === socket.id
+        });
+        
+        if (currentPlayer.id !== socket.id) {
+            console.log("Não é a vez do jogador!");
+            socket.emit('error', { message: 'Não é sua vez de jogar' });
+            return;
+        }
+        
+        // Processar a ação
+        switch (action) {
+            case 'hit':
                 // Comprar uma carta
                 const card = room.deck.draw();
                 currentPlayer.hand.push(card);
                 
                 // Enviar a carta para todos os jogadores
-                io.to(data.roomId).emit('cardDrawn', {
+                io.to(roomId).emit('cardDrawn', {
                     playerId: socket.id,
                     card: card
                 });
@@ -205,60 +227,89 @@ io.on('connection', (socket) => {
                 // Verificar se o jogador estourou (mais de 21)
                 if (calculateHandValue(currentPlayer.hand) > 21) {
                     // Passar para o próximo jogador
-                    nextPlayer(room, data.roomId);
+                    room.currentPlayerIndex++;
+                    
+                    if (room.currentPlayerIndex >= room.players.length) {
+                        // Todos os jogadores já jogaram, agora é a vez do dealer
+                        io.to(roomId).emit('dealerTurn');
+                    } else {
+                        // Ainda há jogadores para jogar
+                        io.to(roomId).emit('currentPlayer', {
+                            playerId: room.players[room.currentPlayerIndex].id,
+                            timeout: room.settings.timeout
+                        });
+                    }
                 }
-            } else if (data.action === 'stand') {
-                // Passar para o próximo jogador
-                nextPlayer(room, data.roomId);
-            } else if (data.action === 'double') {
-                // Comprar uma carta
-                const card = room.deck.draw();
-                currentPlayer.hand.push(card);
+                break;
                 
-                // Enviar a carta para todos os jogadores
-                io.to(data.roomId).emit('cardDrawn', {
-                    playerId: socket.id,
-                    card: card
-                });
-                
+            case 'stand':
                 // Passar para o próximo jogador
-                nextPlayer(room, data.roomId);
-            } else if (data.action === 'dealerTurn') {
+                room.currentPlayerIndex++;
+                
+                if (room.currentPlayerIndex >= room.players.length) {
+                    // Todos os jogadores já jogaram, agora é a vez do dealer
+                    io.to(roomId).emit('dealerTurn');
+                } else {
+                    // Ainda há jogadores para jogar
+                    io.to(roomId).emit('currentPlayer', {
+                        playerId: room.players[room.currentPlayerIndex].id,
+                        timeout: room.settings.timeout
+                    });
+                }
+                break;
+                
+            case 'double':
+                if (currentPlayer.hand.length === 2) {
+                    // Comprar uma carta
+                    const doubleCard = room.deck.draw();
+                    currentPlayer.hand.push(doubleCard);
+                    
+                    // Enviar a carta para todos os jogadores
+                    io.to(roomId).emit('cardDrawn', {
+                        playerId: socket.id,
+                        card: doubleCard
+                    });
+                    
+                    // Passar para o próximo jogador
+                    room.currentPlayerIndex++;
+                    
+                    if (room.currentPlayerIndex >= room.players.length) {
+                        // Todos os jogadores já jogaram, agora é a vez do dealer
+                        io.to(roomId).emit('dealerTurn');
+                    } else {
+                        // Ainda há jogadores para jogar
+                        io.to(roomId).emit('currentPlayer', {
+                            playerId: room.players[room.currentPlayerIndex].id,
+                            timeout: room.settings.timeout
+                        });
+                    }
+                }
+                break;
+                
+            case 'dealerTurn':
                 // Revelar a segunda carta do dealer
-                io.to(data.roomId).emit('dealerSecondCardRevealed', {
+                io.to(roomId).emit('dealerSecondCardRevealed', {
                     card: room.dealer.hand[1]
                 });
                 
                 // O dealer deve comprar cartas até ter pelo menos 17 pontos
                 while (calculateHandValue(room.dealer.hand) < 17) {
-                    const card = room.deck.draw();
-                    room.dealer.hand.push(card);
+                    const dealerCard = room.deck.draw();
+                    room.dealer.hand.push(dealerCard);
                     
                     // Enviar a carta para todos os jogadores
-                    io.to(data.roomId).emit('dealerCardDrawn', {
-                        card: card
+                    io.to(roomId).emit('dealerCardDrawn', {
+                        card: dealerCard
                     });
                 }
                 
                 // Finalizar a rodada
-                endRound(room, data.roomId);
-            } else if (data.action === 'roundEnd') {
-                // Avançar para a próxima rodada
-                room.currentRound = (room.currentRound || 1) + 1;
+                endRound(room, roomId);
+                break;
                 
-                if (room.currentRound > room.settings.rounds) {
-                    // O jogo terminou
-                    room.gameState = 'gameEnd';
-                    io.to(data.roomId).emit('gameEnded', {
-                        players: room.players
-                    });
-                } else {
-                    // Distribuir novas cartas
-                    io.to(data.roomId).emit('nextRound', {
-                        round: room.currentRound
-                    });
-                }
-            }
+            default:
+                socket.emit('error', { message: 'Ação inválida' });
+                break;
         }
     });
 
@@ -316,22 +367,6 @@ function calculateHandValue(hand) {
     }
 
     return value;
-}
-
-// Função para passar para o próximo jogador
-function nextPlayer(room, roomId) {
-    room.currentPlayerIndex++;
-    
-    if (room.currentPlayerIndex >= room.players.length) {
-        // Todos os jogadores já jogaram, agora é a vez do dealer
-        io.to(roomId).emit('dealerTurn');
-    } else {
-        // Ainda há jogadores para jogar
-        io.to(roomId).emit('currentPlayer', { 
-            playerId: room.players[room.currentPlayerIndex].id,
-            timeout: room.settings.timeout
-        });
-    }
 }
 
 // Função para finalizar a rodada
