@@ -48,6 +48,8 @@ class Player {
         this.score = 0;
         this.roundsWon = 0;
         this.isHost = false;
+        this.credits = 100;
+        this.bet = 0;
     }
 
     addCard(card) {
@@ -122,15 +124,61 @@ class Game {
             console.log('Jogador entrou na sala:', data.players);
         });
         
+        this.socket.on('bettingPhase', (data) => {
+            console.log('Fase de apostas iniciada:', data);
+            this.currentRound = data.currentRound;
+            this.totalRounds = data.totalRounds;
+            this.showBettingUI(data.players);
+        });
+        
+        this.socket.on('betPlaced', (data) => {
+            console.log('Aposta realizada:', data);
+            this.updateBettingUI(data);
+        });
+        
         this.socket.on('gameStarted', (data) => {
             console.log('Jogo iniciado:', data);
             this.roomId = data.roomId || this.roomId;
+            
+            // Atualiza a contagem de rodadas
+            if (data.currentRound) {
+                this.currentRound = data.currentRound;
+            }
+            if (data.totalRounds) {
+                this.totalRounds = data.totalRounds;
+            }
+            
             this.initializeOnlineGame(data);
         });
         
         this.socket.on('gameAction', (data) => {
             console.log('Ação recebida:', data);
             this.handleGameAction(data);
+        });
+        
+        this.socket.on('revealDealerCard', (data) => {
+            console.log('Carta da banca revelada:', data);
+            if (data.card) {
+                // Atualiza a segunda carta da banca
+                this.dealer.hand[1] = new Card(data.card.suit, data.card.value);
+                
+                // Adiciona uma pequena animação para a revelação da carta
+                const dealerCards = document.getElementById('dealer-cards');
+                if (dealerCards) {
+                    const secondCardElement = dealerCards.children[1];
+                    if (secondCardElement) {
+                        secondCardElement.classList.add('reveal-animation');
+                        
+                        // Atualiza o texto da carta
+                        setTimeout(() => {
+                            secondCardElement.textContent = `${data.card.value}${data.card.suit}`;
+                            secondCardElement.classList.remove('card-back');
+                        }, 500);
+                    }
+                }
+                
+                this.updateUI();
+            }
         });
 
         this.socket.on('nextPlayer', (data) => {
@@ -161,37 +209,12 @@ class Game {
             console.log('Rodada finalizada:', data);
             this.gameState = 'roundEnd';
             
-            if (data.dealer && data.dealer.hand) {
-                this.dealer.hand = data.dealer.hand.map(card => new Card(card.suit, card.value));
+            // Atualiza a contagem de rodadas
+            if (data.currentRound) {
+                this.currentRound = data.currentRound;
             }
-            
-            this.updateUI();
-            this.showRoundResults(data);
-        });
-        
-        this.socket.on('newRound', (data) => {
-            console.log('Nova rodada iniciada:', data);
-            
-            // Reseta o estado do jogo
-            this.gameState = 'playing';
-            this.currentPlayerIndex = data.currentPlayerIndex || 0;
-            
-            // Limpa as mãos dos jogadores
-            this.players.forEach(player => {
-                player.hand = [];
-            });
-            
-            // Limpa a mão da banca
-            this.dealer.hand = [];
-            
-            // Atualiza as mãos dos jogadores
-            if (data.players) {
-                data.players.forEach(playerData => {
-                    const player = this.players.find(p => p.id === playerData.id);
-                    if (player && playerData.hand) {
-                        player.hand = playerData.hand.map(card => new Card(card.suit, card.value));
-                    }
-                });
+            if (data.totalRounds) {
+                this.totalRounds = data.totalRounds;
             }
             
             // Atualiza a mão da banca
@@ -199,17 +222,35 @@ class Game {
                 this.dealer.hand = data.dealer.hand.map(card => new Card(card.suit, card.value));
             }
             
-            // Fecha a tela de resultados se estiver aberta
-            document.getElementById('round-results').style.display = 'none';
+            // Atualiza os créditos dos jogadores
+            if (data.players) {
+                data.players.forEach(playerData => {
+                    const player = this.players.find(p => p.id === playerData.id);
+                    if (player) {
+                        player.credits = playerData.credits;
+                    }
+                });
+            }
             
-            // Mostra a tela do jogo
-            this.showScreen('game-screen');
-            
-            // Atualiza a UI e inicia o turno
             this.updateUI();
-            this.startTurn();
+            this.showRoundResults(data);
+        });
+        
+        this.socket.on('gameEnd', (data) => {
+            console.log('Jogo encerrado:', data);
+            this.gameState = 'gameEnd';
             
-            console.log('Estado do jogo após nova rodada:', this.gameState);
+            // Atualiza os créditos dos jogadores
+            if (data.players) {
+                data.players.forEach(playerData => {
+                    const player = this.players.find(p => p.id === playerData.id);
+                    if (player) {
+                        player.credits = playerData.credits;
+                    }
+                });
+            }
+            
+            this.showGameResults(data);
         });
     }
 
@@ -284,6 +325,8 @@ class Game {
         data.players.forEach(playerData => {
             const player = new Player(playerData.name, playerData.id);
             player.isHost = playerData.isHost;
+            player.credits = playerData.credits || 100;
+            player.bet = playerData.bet || 0;
             if (playerData.hand) {
                 playerData.hand.forEach(cardData => {
                     player.addCard(new Card(cardData.suit, cardData.value));
@@ -293,10 +336,23 @@ class Game {
         });
         
         this.dealer = new Player('Banca');
-        if (data.dealer && data.dealer.hand) {
-            data.dealer.hand.forEach(cardData => {
-                this.dealer.addCard(new Card(cardData.suit, cardData.value));
-            });
+        if (data.dealer) {
+            if (data.dealer.hand) {
+                data.dealer.hand.forEach(cardData => {
+                    this.dealer.addCard(new Card(cardData.suit, cardData.value));
+                });
+            } else if (data.dealer.visibleCard) {
+                // A primeira carta da banca é visível
+                this.dealer.addCard(new Card(data.dealer.visibleCard.suit, data.dealer.visibleCard.value));
+                // Adicione uma carta oculta como segunda carta
+                this.dealer.addCard(new Card('?', '?'));
+            }
+        }
+        
+        // Fecha a tela de apostas se estiver aberta
+        const bettingScreen = document.getElementById('betting-screen');
+        if (bettingScreen) {
+            bettingScreen.classList.remove('active');
         }
         
         this.updateUI();
@@ -307,6 +363,7 @@ class Game {
     handleGameAction(data) {
         if (!data) return;
 
+        // Encontra o jogador
         let player;
         if (data.playerId === 'dealer') {
             player = this.dealer;
@@ -327,6 +384,10 @@ class Game {
             case 'double':
                 if (data.data && data.data.card) {
                     player.addCard(new Card(data.data.card.suit, data.data.card.value));
+                    // Atualiza a aposta se for o caso
+                    if (data.data.bet && player.id === this.playerId) {
+                        player.bet = data.data.bet;
+                    }
                 }
                 break;
         }
@@ -578,6 +639,8 @@ class Game {
         const resultsDiv = document.getElementById('round-results');
         resultsDiv.innerHTML = '';
         
+        resultsDiv.innerHTML += `<h3>Rodada ${this.currentRound} de ${this.totalRounds}</h3>`;
+        
         if (data.dealer) {
             resultsDiv.innerHTML += `
                 <div class="dealer-result">
@@ -590,33 +653,85 @@ class Game {
         if (data.players) {
             data.players.forEach(playerData => {
                 let resultText = '';
+                let resultClass = '';
+                
                 switch (playerData.result) {
                     case 'win':
                         resultText = 'Ganhou!';
+                        resultClass = 'win';
                         break;
                     case 'lose':
                         resultText = 'Perdeu!';
+                        resultClass = 'lose';
                         break;
                     case 'push':
                         resultText = 'Empatou!';
+                        resultClass = 'push';
                         break;
                     case 'bust':
                         resultText = 'Estourou!';
+                        resultClass = 'lose';
                         break;
                 }
                 
                 resultsDiv.innerHTML += `
-                    <div class="player-result">
+                    <div class="player-result ${resultClass}">
                         <h3>${playerData.name}</h3>
                         <p>Mão: ${playerData.value}</p>
+                        <p>Aposta: ${playerData.bet}</p>
                         <p>Resultado: ${resultText}</p>
+                        <p>${playerData.winnings > 0 ? `Ganhou ${playerData.winnings} créditos` : 'Perdeu a aposta'}</p>
+                        <p>Créditos: ${playerData.credits}</p>
                     </div>
                 `;
             });
         }
         
+        // Se esta foi a última rodada, mostrar mensagem
+        if (this.currentRound >= this.totalRounds) {
+            resultsDiv.innerHTML += `
+                <div class="final-message">
+                    <h3>Final do Jogo</h3>
+                    <p>Aguarde para ver os resultados finais...</p>
+                </div>
+            `;
+        }
+        
         resultsDiv.style.display = 'block';
         this.showScreen('results-screen');
+    }
+
+    showGameResults(data) {
+        const finalScreen = document.getElementById('final-screen');
+        const finalResults = document.getElementById('final-results');
+        finalResults.innerHTML = '';
+        
+        finalResults.innerHTML += `<h3>Resultado Final</h3>`;
+        
+        if (data.players) {
+            // Ordena os jogadores por créditos (do maior para o menor)
+            const sortedPlayers = [...data.players].sort((a, b) => b.credits - a.credits);
+            
+            sortedPlayers.forEach((playerData, index) => {
+                finalResults.innerHTML += `
+                    <div class="player-final-result ${index === 0 ? 'winner' : ''}">
+                        <h3>${index + 1}º Lugar: ${playerData.name}</h3>
+                        <p>Créditos Finais: ${playerData.credits}</p>
+                    </div>
+                `;
+            });
+        }
+        
+        finalResults.innerHTML += `
+            <button id="new-game-btn" class="btn-primary">Novo Jogo</button>
+        `;
+        
+        this.showScreen('final-screen');
+        
+        // Adiciona o evento de clique para o botão de novo jogo
+        document.getElementById('new-game-btn').addEventListener('click', () => {
+            window.location.reload();
+        });
     }
 
     nextRound() {
@@ -668,22 +783,43 @@ class Game {
         const scoreboard = document.getElementById('scoreboard');
         scoreboard.innerHTML = '';
         
-        [...this.players, this.dealer].forEach(player => {
+        this.players.forEach(player => {
             scoreboard.innerHTML += `
-                <p>${player.name}: ${player.score} pontos</p>
+                <p>${player.name}: ${player.credits || 0} créditos${player.bet ? ` (Aposta: ${player.bet})` : ''}</p>
             `;
         });
         
-        
         document.getElementById('current-round').textContent = `Rodada ${this.currentRound}/${this.totalRounds}`;
-        
         
         const dealerCards = document.getElementById('dealer-cards');
         dealerCards.innerHTML = '';
-        this.dealer.hand.forEach(card => {
-            dealerCards.innerHTML += `<div class="card">${card.toString()}</div>`;
+        this.dealer.hand.forEach((card, index) => {
+            // Se for a segunda carta e a banca ainda não jogou, mostre-a como oculta
+            if (index === 1 && this.gameState === 'playing' && card.suit === '?') {
+                dealerCards.innerHTML += `<div class="card card-back">?</div>`;
+            } else {
+                dealerCards.innerHTML += `<div class="card">${card.toString()}</div>`;
+            }
         });
         
+        // Adiciona o valor das cartas da banca, mas apenas se a segunda carta for visível
+        const shouldShowDealerValue = this.dealer.hand.length > 1 && this.dealer.hand[1].suit !== '?';
+        const dealerArea = document.querySelector('.dealer-area');
+        if (dealerArea) {
+            const dealerValueElement = dealerArea.querySelector('.dealer-value');
+            if (shouldShowDealerValue) {
+                if (!dealerValueElement) {
+                    const valueElement = document.createElement('p');
+                    valueElement.className = 'dealer-value';
+                    valueElement.textContent = `Valor: ${this.dealer.getHandValue()}`;
+                    dealerArea.appendChild(valueElement);
+                } else {
+                    dealerValueElement.textContent = `Valor: ${this.dealer.getHandValue()}`;
+                }
+            } else if (dealerValueElement) {
+                dealerValueElement.remove();
+            }
+        }
         
         const playersArea = document.getElementById('players-area');
         playersArea.innerHTML = '';
@@ -692,11 +828,12 @@ class Game {
             const playerDiv = document.createElement('div');
             playerDiv.className = `player-area ${index === this.currentPlayerIndex ? 'active' : ''}`;
             playerDiv.innerHTML = `
-                <h3>${player.name}</h3>
+                <h3>${player.name} ${player.bet ? `(Aposta: ${player.bet})` : ''}</h3>
                 <div class="cards">
                     ${player.hand.map(card => `<div class="card">${card.toString()}</div>`).join('')}
                 </div>
                 <p>Valor: ${player.getHandValue()}</p>
+                <p>Créditos: ${player.credits || 0}</p>
             `;
             playersArea.appendChild(playerDiv);
         });
@@ -707,6 +844,114 @@ class Game {
             screen.classList.remove('active');
         });
         document.getElementById(screenId).classList.add('active');
+    }
+
+    showBettingUI(players) {
+        const player = players.find(p => p.id === this.playerId);
+        if (!player) return;
+        
+        // Muda o estado do jogo
+        this.gameState = 'betting';
+        
+        // Remove a tela de apostas anterior se existir
+        const oldBettingScreen = document.getElementById('betting-screen');
+        if (oldBettingScreen) {
+            oldBettingScreen.remove();
+        }
+        
+        // Cria a interface de apostas
+        const bettingScreen = document.createElement('div');
+        bettingScreen.id = 'betting-screen';
+        bettingScreen.className = 'screen';
+        bettingScreen.innerHTML = `
+            <h2>Fase de Apostas - Rodada ${this.currentRound} de ${this.totalRounds}</h2>
+            <p>Seus créditos: <span id="player-credits">${player.credits}</span></p>
+            <div class="betting-controls">
+                <button id="decrease-bet">-10</button>
+                <span id="current-bet">10</span>
+                <button id="increase-bet">+10</button>
+            </div>
+            <button id="place-bet-btn" class="btn-primary">Apostar</button>
+            <div id="betting-status"></div>
+        `;
+        
+        document.body.appendChild(bettingScreen);
+        
+        // Fecha a tela de resultados se estiver aberta
+        const resultsScreen = document.getElementById('results-screen');
+        if (resultsScreen) {
+            resultsScreen.classList.remove('active');
+        }
+        
+        // Mostra a tela de apostas
+        this.showScreen('betting-screen');
+        
+        // Inicializa o valor da aposta
+        let betAmount = 10;
+        document.getElementById('current-bet').textContent = betAmount;
+        
+        // Configura os eventos dos botões
+        document.getElementById('decrease-bet').addEventListener('click', () => {
+            if (betAmount > 10) {
+                betAmount -= 10;
+                document.getElementById('current-bet').textContent = betAmount;
+            }
+        });
+        
+        document.getElementById('increase-bet').addEventListener('click', () => {
+            if (betAmount + 10 <= player.credits) {
+                betAmount += 10;
+                document.getElementById('current-bet').textContent = betAmount;
+            }
+        });
+        
+        document.getElementById('place-bet-btn').addEventListener('click', () => {
+            this.placeBet(betAmount);
+        });
+        
+        // Mostra as apostas dos outros jogadores
+        const bettingStatus = document.getElementById('betting-status');
+        bettingStatus.innerHTML = '';  // Limpa status anteriores
+        players.forEach(p => {
+            if (p.id !== this.playerId) {
+                const playerElement = document.createElement('div');
+                playerElement.id = `player-bet-${p.id}`;
+                playerElement.innerHTML = `<p>${p.name}: Aguardando aposta...</p>`;
+                bettingStatus.appendChild(playerElement);
+            }
+        });
+        
+        console.log('Tela de apostas exibida');
+    }
+    
+    placeBet(amount) {
+        if (this.gameState !== 'betting' || !this.isOnline) return;
+        
+        console.log('Enviando aposta:', amount);
+        this.socket.emit('placeBet', {
+            roomId: this.roomId,
+            bet: amount
+        });
+        
+        // Desabilita o botão de apostar
+        document.getElementById('place-bet-btn').disabled = true;
+        document.getElementById('decrease-bet').disabled = true;
+        document.getElementById('increase-bet').disabled = true;
+    }
+    
+    updateBettingUI(data) {
+        const statusElement = document.getElementById(`player-bet-${data.playerId}`);
+        if (statusElement) {
+            statusElement.innerHTML = `<p>${data.playerName}: Apostou ${data.bet}</p>`;
+        }
+        
+        // Se for a nossa aposta, atualize nossos créditos
+        if (data.playerId === this.playerId) {
+            const player = this.players.find(p => p.id === this.playerId);
+            if (player) {
+                player.bet = data.bet;
+            }
+        }
     }
 }
 
