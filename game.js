@@ -105,7 +105,6 @@ class Game {
         this.socket = io();
         this.isOnline = true;
         
-        
         this.socket.on('connect', () => {
             this.playerId = this.socket.id;
             console.log('Conectado ao servidor com ID:', this.playerId);
@@ -115,30 +114,102 @@ class Game {
             this.roomId = data.roomId;
             this.updatePlayersList(data.players);
             this.showRoomInfo();
+            console.log('Sala criada:', this.roomId);
         });
         
         this.socket.on('playerJoined', (data) => {
             this.updatePlayersList(data.players);
+            console.log('Jogador entrou na sala:', data.players);
         });
         
         this.socket.on('gameStarted', (data) => {
+            console.log('Jogo iniciado:', data);
+            this.roomId = data.roomId || this.roomId;
             this.initializeOnlineGame(data);
         });
         
         this.socket.on('gameAction', (data) => {
+            console.log('Ação recebida:', data);
             this.handleGameAction(data);
+        });
+
+        this.socket.on('nextPlayer', (data) => {
+            console.log('Próximo jogador:', data);
+            this.currentPlayerIndex = data.currentPlayerIndex;
+            const currentPlayer = this.players[this.currentPlayerIndex];
+            document.getElementById('current-player').textContent = `Vez de: ${currentPlayer.name}`;
+            this.updateUI();
+            this.startTurn();
         });
         
         this.socket.on('playerLeft', (data) => {
+            console.log('Jogador saiu:', data);
             this.handlePlayerLeft(data);
         });
         
         this.socket.on('gamePaused', (data) => {
+            console.log('Jogo pausado:', data);
             this.handleGamePaused(data);
         });
         
         this.socket.on('error', (data) => {
+            console.error('Erro:', data);
             alert(data.message);
+        });
+
+        this.socket.on('roundEnd', (data) => {
+            console.log('Rodada finalizada:', data);
+            this.gameState = 'roundEnd';
+            
+            if (data.dealer && data.dealer.hand) {
+                this.dealer.hand = data.dealer.hand.map(card => new Card(card.suit, card.value));
+            }
+            
+            this.updateUI();
+            this.showRoundResults(data);
+        });
+        
+        this.socket.on('newRound', (data) => {
+            console.log('Nova rodada iniciada:', data);
+            
+            // Reseta o estado do jogo
+            this.gameState = 'playing';
+            this.currentPlayerIndex = data.currentPlayerIndex || 0;
+            
+            // Limpa as mãos dos jogadores
+            this.players.forEach(player => {
+                player.hand = [];
+            });
+            
+            // Limpa a mão da banca
+            this.dealer.hand = [];
+            
+            // Atualiza as mãos dos jogadores
+            if (data.players) {
+                data.players.forEach(playerData => {
+                    const player = this.players.find(p => p.id === playerData.id);
+                    if (player && playerData.hand) {
+                        player.hand = playerData.hand.map(card => new Card(card.suit, card.value));
+                    }
+                });
+            }
+            
+            // Atualiza a mão da banca
+            if (data.dealer && data.dealer.hand) {
+                this.dealer.hand = data.dealer.hand.map(card => new Card(card.suit, card.value));
+            }
+            
+            // Fecha a tela de resultados se estiver aberta
+            document.getElementById('round-results').style.display = 'none';
+            
+            // Mostra a tela do jogo
+            this.showScreen('game-screen');
+            
+            // Atualiza a UI e inicia o turno
+            this.updateUI();
+            this.startTurn();
+            
+            console.log('Estado do jogo após nova rodada:', this.gameState);
         });
     }
 
@@ -160,6 +231,7 @@ class Game {
             this.connectToServer();
         }
         
+        this.roomId = roomId;
         this.socket.emit('joinRoom', {
             roomId,
             playerName
@@ -196,6 +268,8 @@ class Game {
             document.getElementById('start-game-btn').addEventListener('click', () => {
                 this.socket.emit('startGame', { roomId: this.roomId });
             });
+
+            this.showScreen('room-screen');
         }
     }
 
@@ -204,59 +278,60 @@ class Game {
         this.timeout = data.settings.timeout;
         this.currentRound = 1;
         this.gameState = 'playing';
-        
+        this.currentPlayerIndex = data.currentPlayerIndex;
 
         this.players = [];
-        
-        
         data.players.forEach(playerData => {
             const player = new Player(playerData.name, playerData.id);
             player.isHost = playerData.isHost;
+            if (playerData.hand) {
+                playerData.hand.forEach(cardData => {
+                    player.addCard(new Card(cardData.suit, cardData.value));
+                });
+            }
             this.players.push(player);
         });
         
-        
         this.dealer = new Player('Banca');
-        
-        
-        this.dealInitialCards();
+        if (data.dealer && data.dealer.hand) {
+            data.dealer.hand.forEach(cardData => {
+                this.dealer.addCard(new Card(cardData.suit, cardData.value));
+            });
+        }
         
         this.updateUI();
         this.startTurn();
-        
         this.showScreen('game-screen');
     }
 
     handleGameAction(data) {
-        if (data.action === 'hit') {
-            const player = this.players.find(p => p.id === data.playerId);
-            if (player) {
-                player.addCard(new Card(data.data.card.suit, data.data.card.value));
-                this.updateUI();
-            }
-        } else if (data.action === 'stand') {
-            this.currentPlayerIndex++;
-            if (this.currentPlayerIndex >= this.players.length) {
-                this.dealerTurn();
-            } else {
-                this.startTurn();
-            }
-            this.updateUI();
-        } else if (data.action === 'double') {
-            const player = this.players.find(p => p.id === data.playerId);
-            if (player && player.hand.length === 2) {
-                player.addCard(new Card(data.data.card.suit, data.data.card.value));
-                this.currentPlayerIndex++;
-                if (this.currentPlayerIndex >= this.players.length) {
-                    this.dealerTurn();
-                } else {
-                    this.startTurn();
-                }
-                this.updateUI();
-            }
-        } else if (data.action === 'nextRound') {
-            this.nextRound();
+        if (!data) return;
+
+        let player;
+        if (data.playerId === 'dealer') {
+            player = this.dealer;
+        } else {
+            player = this.players.find(p => p.id === data.playerId);
+            if (!player) return;
         }
+
+        switch (data.action) {
+            case 'hit':
+                if (data.data && data.data.card) {
+                    player.addCard(new Card(data.data.card.suit, data.data.card.value));
+                }
+                break;
+            case 'stand':
+                // A lógica de stand é tratada pelo servidor
+                break;
+            case 'double':
+                if (data.data && data.data.card) {
+                    player.addCard(new Card(data.data.card.suit, data.data.card.value));
+                }
+                break;
+        }
+        
+        this.updateUI();
     }
 
     handlePlayerLeft(data) {
@@ -367,56 +442,73 @@ class Game {
     }
 
     hit() {
-        if (this.gameState !== 'playing') return;
+        if (this.gameState !== 'playing') {
+            console.log('Não é possível pedir carta. Estado do jogo:', this.gameState);
+            return;
+        }
 
         const currentPlayer = this.players[this.currentPlayerIndex];
         
         if (this.isOnline && currentPlayer.id !== this.playerId) {
+            console.log('Não é sua vez de jogar');
             return;
         }
         
-        const card = this.deck.draw();
-        currentPlayer.addCard(card);
-        
         if (this.isOnline) {
+            if (!this.roomId) {
+                console.error('roomId não definido');
+                return;
+            }
+            console.log('Enviando ação hit para sala:', this.roomId);
             this.socket.emit('gameAction', {
                 roomId: this.roomId,
-                action: 'hit',
-                data: { card }
+                action: 'hit'
             });
+        } else {
+            const card = this.deck.draw();
+            currentPlayer.addCard(card);
+            
+            if (currentPlayer.getHandValue() > 21) {
+                this.stand();
+            }
+            
+            this.updateUI();
         }
-        
-        if (currentPlayer.getHandValue() > 21) {
-            this.stand();
-        }
-        
-        this.updateUI();
     }
 
     stand() {
-        if (this.gameState !== 'playing') return;
+        if (this.gameState !== 'playing') {
+            console.log('Não é possível realizar stand. Estado do jogo:', this.gameState);
+            return;
+        }
 
         const currentPlayer = this.players[this.currentPlayerIndex];
         
         if (this.isOnline && currentPlayer.id !== this.playerId) {
+            console.log('Não é sua vez de jogar');
             return;
         }
         
         clearInterval(this.timer);
         
         if (this.isOnline) {
+            if (!this.roomId) {
+                console.error('roomId não definido');
+                return;
+            }
+            console.log('Enviando ação stand para sala:', this.roomId);
             this.socket.emit('gameAction', {
                 roomId: this.roomId,
                 action: 'stand'
             });
-        }
-        
-        this.currentPlayerIndex++;
-        
-        if (this.currentPlayerIndex >= this.players.length) {
-            this.dealerTurn();
         } else {
-            this.startTurn();
+            this.currentPlayerIndex++;
+            
+            if (this.currentPlayerIndex >= this.players.length) {
+                this.dealerTurn();
+            } else {
+                this.startTurn();
+            }
         }
         
         this.updateUI();
@@ -432,18 +524,21 @@ class Game {
         }
         
         if (currentPlayer.hand.length === 2) {
-            const card = this.deck.draw();
-            currentPlayer.addCard(card);
-            
             if (this.isOnline) {
+                if (!this.roomId) {
+                    console.error('roomId não definido');
+                    return;
+                }
+                console.log('Enviando ação double para sala:', this.roomId);
                 this.socket.emit('gameAction', {
                     roomId: this.roomId,
-                    action: 'double',
-                    data: { card }
+                    action: 'double'
                 });
+            } else {
+                const card = this.deck.draw();
+                currentPlayer.addCard(card);
+                this.stand();
             }
-            
-            this.stand();
         }
     }
 
@@ -479,21 +574,58 @@ class Game {
         this.showRoundResults(winners);
     }
 
-    showRoundResults(winners) {
+    showRoundResults(data) {
         const resultsDiv = document.getElementById('round-results');
         resultsDiv.innerHTML = '';
         
-        if (winners.length > 0) {
-            const winnerNames = winners.map(p => p.name).join(', ');
-            resultsDiv.innerHTML += `<p>Vencedores da rodada: ${winnerNames}</p>`;
-        } else {
-            resultsDiv.innerHTML += `<p>Banca venceu a rodada!</p>`;
+        if (data.dealer) {
+            resultsDiv.innerHTML += `
+                <div class="dealer-result">
+                    <h3>Banca</h3>
+                    <p>Mão: ${data.dealer.value}</p>
+                </div>
+            `;
         }
         
+        if (data.players) {
+            data.players.forEach(playerData => {
+                let resultText = '';
+                switch (playerData.result) {
+                    case 'win':
+                        resultText = 'Ganhou!';
+                        break;
+                    case 'lose':
+                        resultText = 'Perdeu!';
+                        break;
+                    case 'push':
+                        resultText = 'Empatou!';
+                        break;
+                    case 'bust':
+                        resultText = 'Estourou!';
+                        break;
+                }
+                
+                resultsDiv.innerHTML += `
+                    <div class="player-result">
+                        <h3>${playerData.name}</h3>
+                        <p>Mão: ${playerData.value}</p>
+                        <p>Resultado: ${resultText}</p>
+                    </div>
+                `;
+            });
+        }
+        
+        resultsDiv.style.display = 'block';
         this.showScreen('results-screen');
     }
 
     nextRound() {
+        if (this.isOnline) {
+            // No modo online, a troca de rodadas é controlada pelo servidor
+            console.log('Aguardando servidor iniciar nova rodada...');
+            return;
+        }
+        
         this.currentRound++;
         
         if (this.currentRound > this.totalRounds) {
@@ -509,13 +641,6 @@ class Game {
         
         this.currentPlayerIndex = 0;
         this.gameState = 'playing';
-        
-        if (this.isOnline) {
-            this.socket.emit('gameAction', {
-                roomId: this.roomId,
-                action: 'nextRound'
-            });
-        }
         
         this.dealInitialCards();
         this.updateUI();
@@ -589,84 +714,7 @@ class Game {
 const game = new Game();
 
 
-document.getElementById('player-count').addEventListener('change', function() {
-    game.initializeGame(
-        parseInt(this.value),
-        parseInt(document.getElementById('rounds').value),
-        parseInt(document.getElementById('timeout').value)
-    );
-});
-
-document.getElementById('start-game').addEventListener('click', () => {
-    game.startGame();
-    game.showScreen('game-screen');
-});
-
-document.getElementById('hit-btn').addEventListener('click', () => game.hit());
-document.getElementById('stand-btn').addEventListener('click', () => game.stand());
-document.getElementById('double-btn').addEventListener('click', () => game.double());
-document.getElementById('next-round').addEventListener('click', () => game.nextRound());
-document.getElementById('new-game').addEventListener('click', () => {
-    game.showScreen('start-screen');
-    game.initializeGame(
-        parseInt(document.getElementById('player-count').value),
-        parseInt(document.getElementById('rounds').value),
-        parseInt(document.getElementById('timeout').value)
-    );
-});
-
-
 document.addEventListener('DOMContentLoaded', () => {
-    const startScreen = document.getElementById('start-screen');
-    
-    const onlineSection = document.createElement('div');
-    onlineSection.className = 'online-section';
-    onlineSection.innerHTML = `
-        <h2>Jogar Online</h2>
-        <div class="online-options">
-            <div class="input-group">
-                <label for="player-name">Seu Nome:</label>
-                <input type="text" id="player-name" required>
-            </div>
-            <div class="input-group">
-                <label for="online-player-count">Número de Jogadores (2-4):</label>
-                <input type="number" id="online-player-count" min="2" max="4" value="2">
-            </div>
-            <div class="input-group">
-                <label for="online-rounds">Número de Rodadas (mín. 3):</label>
-                <input type="number" id="online-rounds" min="3" value="3">
-            </div>
-            <div class="input-group">
-                <label for="online-timeout">Tempo por jogada (segundos):</label>
-                <input type="number" id="online-timeout" min="10" value="30">
-            </div>
-            <button id="create-room" class="btn-primary">Criar Sala</button>
-            <div class="join-room">
-                <div class="input-group">
-                    <label for="room-id">Código da Sala:</label>
-                    <input type="text" id="room-id" placeholder="Digite o código da sala">
-                </div>
-                <button id="join-room" class="btn-primary">Entrar na Sala</button>
-            </div>
-        </div>
-    `;
-    
-    
-    const title = startScreen.querySelector('h1');
-    title.parentNode.insertBefore(onlineSection, title.nextSibling);
-    
-    
-    const roomScreen = document.createElement('div');
-    roomScreen.id = 'room-screen';
-    roomScreen.className = 'screen';
-    roomScreen.innerHTML = `
-        <h2>Sala de Jogo</h2>
-        <div id="room-info"></div>
-    `;
-    
-    document.querySelector('.container').appendChild(roomScreen);
-    
-    
     document.getElementById('create-room').addEventListener('click', () => {
         const playerName = document.getElementById('player-name').value.trim();
         if (!playerName) {
@@ -696,5 +744,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         game.joinRoom(roomId, playerName);
+    });
+
+    document.getElementById('player-count').addEventListener('change', function() {
+        game.initializeGame(
+            parseInt(this.value),
+            parseInt(document.getElementById('rounds').value),
+            parseInt(document.getElementById('timeout').value)
+        );
+    });
+
+    document.getElementById('start-game').addEventListener('click', () => {
+        game.startGame();
+        game.showScreen('game-screen');
+    });
+
+    document.getElementById('hit-btn').addEventListener('click', () => game.hit());
+    document.getElementById('stand-btn').addEventListener('click', () => game.stand());
+    document.getElementById('double-btn').addEventListener('click', () => game.double());
+    document.getElementById('next-round').addEventListener('click', () => game.nextRound());
+    document.getElementById('new-game').addEventListener('click', () => {
+        game.showScreen('start-screen');
+        game.initializeGame(
+            parseInt(document.getElementById('player-count').value),
+            parseInt(document.getElementById('rounds').value),
+            parseInt(document.getElementById('timeout').value)
+        );
     });
 }); 
