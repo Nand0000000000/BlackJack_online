@@ -272,3 +272,166 @@ input:focus {
         width: 100%;
     }
 } 
+
+.busted {
+  color: #ff0000;
+  font-weight: bold;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* Melhorar a visibilidade do jogador ativo */
+.player-area.active {
+  border: 2px solid #4CAF50;
+  box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+/* Estilo para as cartas */
+.card {
+  display: inline-block;
+  width: 60px;
+  height: 90px;
+  margin: 5px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: white;
+  box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+  text-align: center;
+  font-size: 24px;
+  line-height: 80px;
+  transition: transform 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+}
+
+.card-back {
+  background-color: #b71540;
+  color: white;
+  background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,.1) 10px, rgba(255,255,255,.1) 20px);
+}
+
+/* Estilo para os resultados */
+.player-result {
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.player-result.win {
+  background-color: rgba(76, 175, 80, 0.2);
+  border-left: 5px solid #4CAF50;
+}
+
+.player-result.lose {
+  background-color: rgba(244, 67, 54, 0.2);
+  border-left: 5px solid #F44336;
+}
+
+.player-result.push {
+  background-color: rgba(255, 193, 7, 0.2);
+  border-left: 5px solid #FFC107;
+}
+
+/* Botões do jogo */
+.game-controls button {
+  margin: 5px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.game-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#hit-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+#hit-btn:hover:not(:disabled) {
+  background-color: #45a049;
+}
+
+#stand-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+#stand-btn:hover:not(:disabled) {
+  background-color: #d32f2f;
+}
+
+#double-btn {
+  background-color: #2196F3;
+  color: white;
+}
+
+#double-btn:hover:not(:disabled) {
+  background-color: #0b7dda;
+}
+
+/* Timer */
+#timer {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin: 10px 0;
+}
+
+/* Mensagem de status do jogo */
+#current-player {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 10px 0;
+  padding: 5px 10px;
+  background-color: #f1f1f1;
+  border-radius: 4px;
+  border-left: 5px solid #2196F3;
+}
+
+/* Melhorar área da banca */
+.dealer-area {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+}
+
+.dealer-value {
+  font-size: 18px;
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+/* Botão de próxima rodada */
+#next-round-result {
+  display: block;
+  margin: 20px auto;
+  padding: 10px 20px;
+  background-color: #FF9800;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+#next-round-result:hover {
+  background-color: #F57C00;
+}
