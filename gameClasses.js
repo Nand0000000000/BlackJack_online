@@ -48,6 +48,9 @@ class Player {
         this.score = 0;
         this.roundsWon = 0;
         this.isHost = false;
+        this.credits = 100;
+        this.bet = 0;
+        this.profilePhoto = "images/default-profile.png";
     }
 
     addCard(card) {

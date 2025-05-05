@@ -29,6 +29,7 @@ io.on('connection', (socket) => {
         const player = new Player(roomData.playerName, socket.id);
         player.isHost = true;
         player.credits = 100; // Cada jogador começa com 100 créditos
+        player.profilePhoto = roomData.profilePhoto || 'images/default-profile.png'; // Adicionar foto de perfil
         
         rooms[roomId] = {
             id: roomId,
@@ -70,6 +71,7 @@ io.on('connection', (socket) => {
         
         const player = new Player(data.playerName, socket.id);
         player.credits = 100; // Cada jogador começa com 100 créditos
+        player.profilePhoto = data.profilePhoto || 'images/default-profile.png'; // Adicionar foto de perfil
         room.players.push(player);
         
         socket.join(data.roomId);
@@ -281,7 +283,8 @@ function processResults(room) {
                 result: result,
                 bet: player.bet,
                 winnings: winnings,
-                credits: player.credits
+                credits: player.credits,
+                profilePhoto: player.profilePhoto
             };
         })
     };
@@ -333,7 +336,8 @@ function startBettingPhase(room) {
         players: room.players.map(p => ({
             id: p.id,
             name: p.name,
-            credits: p.credits
+            credits: p.credits,
+            profilePhoto: p.profilePhoto
         })),
         currentRound: room.currentRound + 1,
         totalRounds: room.settings.rounds

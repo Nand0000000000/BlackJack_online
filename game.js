@@ -64,6 +64,7 @@ class Player {
     this.isHost = false;
     this.credits = 100;
     this.bet = 0;
+    this.profilePhoto = "images/default-profile.png";
   }
 
   addCard(card) {
@@ -277,11 +278,15 @@ class Game {
       this.connectToServer();
     }
 
+    // Obter a foto de perfil do localStorage ou usar a padrão
+    const profilePhoto = localStorage.getItem("profilePhoto") || "images/default-profile.png";
+
     this.socket.emit("createRoom", {
       playerName,
       playerCount,
       rounds,
       timeout,
+      profilePhoto // Enviar a foto de perfil
     });
   }
 
@@ -290,10 +295,14 @@ class Game {
       this.connectToServer();
     }
 
+    // Obter a foto de perfil do localStorage ou usar a padrão
+    const profilePhoto = localStorage.getItem("profilePhoto") || "images/default-profile.png";
+
     this.roomId = roomId;
     this.socket.emit("joinRoom", {
       roomId,
       playerName,
+      profilePhoto // Enviar a foto de perfil
     });
   }
 
@@ -306,13 +315,12 @@ class Game {
         const playerElement = document.createElement("div");
         playerElement.className = "player-item";
         playerElement.innerHTML = `
-                    <span>${player.name}</span>
-                    ${
-                      player.isHost
-                        ? '<span class="host-badge">Host</span>'
-                        : ""
-                    }
-                `;
+          <div class="player-info">
+            <img src="${player.profilePhoto || 'images/default-profile.png'}" alt="${player.name}">
+            <span>${player.name}</span>
+            ${player.isHost ? '<span class="host-badge">Host</span>' : ""}
+          </div>
+        `;
         playersListElement.appendChild(playerElement);
       });
     }
@@ -351,6 +359,7 @@ class Game {
       player.isHost = playerData.isHost;
       player.credits = playerData.credits || 100;
       player.bet = playerData.bet || 0;
+      player.profilePhoto = playerData.profilePhoto || 'images/default-profile.png';
       if (playerData.hand) {
         playerData.hand.forEach((cardData) => {
           player.addCard(new Card(cardData.suit, cardData.value));
@@ -849,9 +858,15 @@ class Game {
             break;
         }
 
+        // Encontrar o jogador correspondente para obter a foto do perfil
+        const player = this.players.find(p => p.id === playerData.id) || { profilePhoto: 'images/default-profile.png' };
+
         resultsDiv.innerHTML += `
           <div class="player-result ${resultClass}">
-            <h3>${playerData.name}</h3>
+            <div class="player-name-with-photo">
+              <img class="player-profile-photo" src="${player.profilePhoto}" alt="${playerData.name}">
+              <h3>${playerData.name}</h3>
+            </div>
             <p>Mão: ${playerData.value}</p>
             <p>Aposta: ${playerData.bet}</p>
             <p>Resultado: ${resultText}</p>
@@ -901,20 +916,24 @@ class Game {
       );
 
       sortedPlayers.forEach((playerData, index) => {
+        // Encontrar o jogador para obter a foto de perfil
+        const player = this.players.find(p => p.id === playerData.id) || { profilePhoto: 'images/default-profile.png' };
+
         finalResults.innerHTML += `
-                    <div class="player-final-result ${
-                      index === 0 ? "winner" : ""
-                    }">
-                        <h3>${index + 1}º Lugar: ${playerData.name}</h3>
-                        <p>Créditos Finais: ${playerData.credits}</p>
-                    </div>
-                `;
+          <div class="player-final-result ${index === 0 ? "winner" : ""}">
+            <div class="player-name-with-photo">
+              <img class="player-profile-photo" src="${player.profilePhoto}" alt="${playerData.name}">
+              <h3>${index + 1}º Lugar: ${playerData.name}</h3>
+            </div>
+            <p>Créditos Finais: ${playerData.credits}</p>
+          </div>
+        `;
       });
     }
 
     finalResults.innerHTML += `
-            <button id="new-game-btn" class="btn-primary">Novo Jogo</button>
-        `;
+      <button id="new-game-btn" class="btn-primary">Novo Jogo</button>
+    `;
 
     this.showScreen("final-screen");
 
@@ -981,10 +1000,10 @@ class Game {
 
     this.players.forEach((player) => {
       scoreboard.innerHTML += `
-                <p>${player.name}: ${player.credits || 0} créditos${
+        <p>${player.name}: ${player.credits || 0} créditos${
         player.bet ? ` (Aposta: ${player.bet})` : ""
       }</p>
-            `;
+      `;
     });
 
     document.getElementById(
@@ -1031,19 +1050,22 @@ class Game {
         index === this.currentPlayerIndex ? "active" : ""
       }`;
       playerDiv.innerHTML = `
-                <h3>${player.name} ${
+        <div class="player-name-with-photo">
+          <img class="player-profile-photo" src="${player.profilePhoto || 'images/default-profile.png'}" alt="${player.name}">
+          <h3>${player.name} ${
         player.bet ? `(Aposta: ${player.bet})` : ""
       }</h3>
-                <div class="cards">
-                    ${player.hand
-                      .map(
-                        (card) => `<div class="card">${card.toString()}</div>`
-                      )
-                      .join("")}
-                </div>
-                <p>Valor: ${player.getHandValue()}</p>
-                <p>Créditos: ${player.credits || 0}</p>
-            `;
+        </div>
+        <div class="cards">
+          ${player.hand
+            .map(
+              (card) => `<div class="card">${card.toString()}</div>`
+            )
+            .join("")}
+        </div>
+        <p>Valor: ${player.getHandValue()}</p>
+        <p>Créditos: ${player.credits || 0}</p>
+      `;
       playersArea.appendChild(playerDiv);
     });
   }
@@ -1169,6 +1191,33 @@ class Game {
 const game = new Game();
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Manipulador para o upload de foto de perfil
+  const profilePhotoInput = document.getElementById("profile-photo");
+  const profilePhotoPreview = document.getElementById("profile-photo-preview");
+  
+  if (profilePhotoInput) {
+    profilePhotoInput.addEventListener("change", function() {
+      const file = this.files[0];
+      if (file) {
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+          profilePhotoPreview.src = e.target.result;
+          // Armazenar a imagem no localStorage para persistência
+          localStorage.setItem("profilePhoto", e.target.result);
+        };
+        
+        reader.readAsDataURL(file);
+      }
+    });
+    
+    // Carregar foto do perfil do localStorage se existir
+    const savedPhoto = localStorage.getItem("profilePhoto");
+    if (savedPhoto) {
+      profilePhotoPreview.src = savedPhoto;
+    }
+  }
+
   document.getElementById("create-room").addEventListener("click", () => {
     const playerName = document.getElementById("player-name").value.trim();
     if (!playerName) {
