@@ -290,6 +290,10 @@
                         <label for="player-name">Seu Nome:</label>
                         <input type="text" id="player-name" required>
                     </div>
+                    <div class="input-group">
+                        <label for="player-age">Sua Idade:</label>
+                        <input type="number" id="player-age" min="1" max="120" required>
+                    </div>
                     <div class="profile-photo-container">
                         <label for="profile-photo">Foto de Perfil:</label>
                         <div class="photo-preview-wrapper">
@@ -339,6 +343,16 @@
                     <!-- Player name inputs will be added here dynamically -->
                 </div>
                 <button id="start-game" class="btn-primary">Iniciar Jogo</button>
+            </div>
+        </div>
+
+        <!-- Tela de bloqueio de idade -->
+        <div id="age-restriction-screen" class="screen">
+            <div class="age-restriction-container">
+                <img src="D_NQ_NP_970910-MLB74930055279_032024-O-5-placas-local-proibido-acesso-negado-no-entre-sinal-pare.png" alt="Entrada Proibida" class="restriction-image">
+                <h2>Acesso Negado</h2>
+                <p class="restriction-message">Não aposte, estude BITCOIN - Renato money moicano</p>
+                <button id="lie-about-age-btn" class="btn-primary">mentir a idade</button>
             </div>
         </div>
 

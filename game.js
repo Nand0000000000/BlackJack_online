@@ -1195,6 +1195,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const profilePhotoInput = document.getElementById("profile-photo");
   const profilePhotoPreview = document.getElementById("profile-photo-preview");
   
+  // Manipulador para verificação de idade
+  const ageVerification = () => {
+    const playerAge = parseInt(document.getElementById("player-age").value);
+    if (playerAge < 18) {
+      game.showScreen("age-restriction-screen");
+      return false;
+    }
+    return true;
+  };
+  
+  // Botão para "mentir a idade"
+  const lieAboutAgeBtn = document.getElementById("lie-about-age-btn");
+  if (lieAboutAgeBtn) {
+    lieAboutAgeBtn.addEventListener("click", () => {
+      game.showScreen("start-screen");
+    });
+  }
+  
   if (profilePhotoInput) {
     profilePhotoInput.addEventListener("change", function() {
       const file = this.files[0];
@@ -1224,6 +1242,11 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Por favor, insira seu nome.");
       return;
     }
+    
+    // Verificar idade antes de criar sala
+    if (!ageVerification()) {
+      return;
+    }
 
     const playerCount = parseInt(
       document.getElementById("online-player-count").value
@@ -1247,6 +1270,11 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Por favor, insira o código da sala.");
       return;
     }
+    
+    // Verificar idade antes de entrar na sala
+    if (!ageVerification()) {
+      return;
+    }
 
     game.joinRoom(roomId, playerName);
   });
@@ -1262,6 +1290,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
   document.getElementById("start-game").addEventListener("click", () => {
+    // Verificar idade antes de iniciar jogo local
+    if (!ageVerification()) {
+      return;
+    }
+    
     game.startGame();
     game.showScreen("game-screen");
   });
