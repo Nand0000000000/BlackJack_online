@@ -1,412 +1,501 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Blackjack Online</title>
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            background-color: #1a1a1a;
-            color: #fff;
-        }
-        
-        .container {
-            max-width: 1200px;
-            width: 100%;
-            padding: 20px;
-        }
-        
-        .screen {
-            display: none;
-            width: 100%;
-        }
-        
-        .screen.active {
-            display: block;
-        }
-        
-        h1, h2, h3 {
-            text-align: center;
-        }
-        
-        .card {
-            background-color: #fff;
-            color: #000;
-            border-radius: 5px;
-            padding: 10px 15px;
-            margin: 5px;
-            display: inline-block;
-            font-size: 18px;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
-        }
-        
-        .card-back {
-            background-color: #006400;
-            color: #006400;
-            position: relative;
-        }
-        
-        .card-back:before {
-            content: "?";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 24px;
-        }
-        
-        .player-area {
-            border: 1px solid #555;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 15px 0;
-            background-color: #222;
-        }
-        
-        .player-area.active {
-            border-color: #ffcc00;
-            background-color: #333;
-        }
-        
-        .dealer-area {
-            border: 1px solid #555;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 15px 0;
-            background-color: #222;
-        }
-        
-        .btn-primary {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-        
-        .btn-primary:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        
-        .game-controls {
-            display: flex;
-            justify-content: center;
-            margin: 20px 0;
-        }
-        
-        .game-controls button {
-            margin: 0 10px;
-        }
-        
-        .input-group {
-            margin-bottom: 15px;
-        }
-        
-        .input-group label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        
-        .input-group input, .input-group select {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-        }
-        
-        #scoreboard {
-            background-color: #333;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-        }
-        
-        #round-results {
-            padding: 20px;
-            background-color: #333;
-            border-radius: 5px;
-            margin-top: 20px;
-        }
-        
-        /* Estilos para a fase de apostas */
-        .betting-controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 20px 0;
-        }
-        
-        .betting-controls button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            cursor: pointer;
-            font-size: 18px;
-            border-radius: 4px;
-        }
-        
-        .betting-controls button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        
-        #current-bet {
-            font-size: 24px;
-            font-weight: bold;
-            margin: 0 20px;
-            padding: 10px;
-            background-color: #333;
-            border-radius: 4px;
-        }
-        
-        #betting-status {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #333;
-            border-radius: 5px;
-        }
-        
-        /* Estilos para resultados da rodada */
-        .player-result {
-            margin: 15px 0;
-            padding: 15px;
-            border-radius: 5px;
-            background-color: #444;
-        }
-        
-        .player-result.win {
-            border-left: 5px solid #4CAF50;
-        }
-        
-        .player-result.lose {
-            border-left: 5px solid #f44336;
-        }
-        
-        .player-result.push {
-            border-left: 5px solid #ff9800;
-        }
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        background-color: #1a1a1a;
+        color: #fff;
+      }
 
-        /* Animação para revelar carta */
-        .reveal-animation {
-            animation: reveal-card 1s ease-in-out;
-        }
+      .container {
+        max-width: 1200px;
+        width: 100%;
+        padding: 20px;
+      }
 
-        @keyframes reveal-card {
-            0% {
-                transform: rotateY(0deg);
-                background-color: #006400;
-            }
-            50% {
-                transform: rotateY(90deg);
-            }
-            100% {
-                transform: rotateY(0deg);
-                background-color: #fff;
-            }
-        }
+      .screen {
+        display: none;
+        width: 100%;
+      }
 
-        /* Estilo específico para a tela de apostas */
-        #betting-screen {
-            width: 100%;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #2a2a2a;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        }
+      .screen.active {
+        display: block;
+      }
 
-        #betting-screen h2 {
-            margin-bottom: 20px;
-            color: #ffcc00;
-        }
+      h1,
+      h2,
+      h3 {
+        text-align: center;
+      }
 
-        #player-credits {
-            font-weight: bold;
-            color: #4CAF50;
-        }
+      .card {
+        background-color: #fff;
+        color: #000;
+        border-radius: 5px;
+        padding: 10px 15px;
+        margin: 5px;
+        display: inline-block;
+        font-size: 18px;
+        box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+      }
 
-        /* Estilos para resultado final do jogo */
-        .player-final-result {
-            margin: 15px 0;
-            padding: 20px;
-            border-radius: 8px;
-            background-color: #333;
-        }
+      .card-back {
+        background-color: #006400;
+        color: #006400;
+        position: relative;
+      }
 
-        .player-final-result.winner {
-            background-color: rgba(76, 175, 80, 0.3);
-            border: 2px solid #4CAF50;
-        }
+      .card-back:before {
+        content: "?";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 24px;
+      }
 
-        .final-message {
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 8px;
-            background-color: #ff9800;
-            color: black;
-            text-align: center;
-        }
+      .player-area {
+        border: 1px solid #555;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 15px 0;
+        background-color: #222;
+      }
 
-        #new-game-btn {
-            display: block;
-            margin: 30px auto;
-            padding: 15px 30px;
-            font-size: 18px;
+      .player-area.active {
+        border-color: #ffcc00;
+        background-color: #333;
+      }
+
+      .dealer-area {
+        border: 1px solid #555;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 15px 0;
+        background-color: #222;
+      }
+
+      .btn-primary {
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 4px 2px;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+
+      .btn-primary:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+
+      .game-controls {
+        display: flex;
+        justify-content: center;
+        margin: 20px 0;
+      }
+
+      .game-controls button {
+        margin: 0 10px;
+      }
+
+      .input-group {
+        margin-bottom: 15px;
+      }
+
+      .input-group label {
+        display: block;
+        margin-bottom: 5px;
+      }
+
+      .input-group input,
+      .input-group select {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+      }
+
+      #scoreboard {
+        background-color: #333;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+      }
+
+      #round-results {
+        padding: 20px;
+        background-color: #333;
+        border-radius: 5px;
+        margin-top: 20px;
+      }
+
+      /* Estilos para a fase de apostas */
+      .betting-controls {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 20px 0;
+      }
+
+      .betting-controls button {
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        cursor: pointer;
+        font-size: 18px;
+        border-radius: 4px;
+      }
+
+      .betting-controls button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+
+      #current-bet {
+        font-size: 24px;
+        font-weight: bold;
+        margin: 0 20px;
+        padding: 10px;
+        background-color: #333;
+        border-radius: 4px;
+      }
+
+      #betting-status {
+        margin-top: 20px;
+        padding: 10px;
+        background-color: #333;
+        border-radius: 5px;
+      }
+
+      /* Estilos para resultados da rodada */
+      .player-result {
+        margin: 15px 0;
+        padding: 15px;
+        border-radius: 5px;
+        background-color: #444;
+      }
+
+      .player-result.win {
+        border-left: 5px solid #4caf50;
+      }
+
+      .player-result.lose {
+        border-left: 5px solid #f44336;
+      }
+
+      .player-result.push {
+        border-left: 5px solid #ff9800;
+      }
+
+      /* Animação para revelar carta */
+      .reveal-animation {
+        animation: reveal-card 1s ease-in-out;
+      }
+
+      @keyframes reveal-card {
+        0% {
+          transform: rotateY(0deg);
+          background-color: #006400;
         }
+        50% {
+          transform: rotateY(90deg);
+        }
+        100% {
+          transform: rotateY(0deg);
+          background-color: #fff;
+        }
+      }
+
+      /* Estilo específico para a tela de apostas */
+      #betting-screen {
+        width: 100%;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #2a2a2a;
+        border-radius: 10px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      }
+
+      #betting-screen h2 {
+        margin-bottom: 20px;
+        color: #ffcc00;
+      }
+
+      #player-credits {
+        font-weight: bold;
+        color: #4caf50;
+      }
+
+      /* Estilos para resultado final do jogo */
+      .player-final-result {
+        margin: 15px 0;
+        padding: 20px;
+        border-radius: 8px;
+        background-color: #333;
+      }
+
+      .player-final-result.winner {
+        background-color: rgba(76, 175, 80, 0.3);
+        border: 2px solid #4caf50;
+      }
+
+      .final-message {
+        margin: 20px 0;
+        padding: 15px;
+        border-radius: 8px;
+        background-color: #ff9800;
+        color: black;
+        text-align: center;
+      }
+
+      #new-game-btn {
+        display: block;
+        margin: 30px auto;
+        padding: 15px 30px;
+        font-size: 18px;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="container">
-        <!-- Tela inicial -->
-        <div id="start-screen" class="screen active">
-            <h1>Blackjack Online</h1>
-            
-            <!-- Seção Online -->
-            <div class="online-section">
-                <h2>Jogar Online</h2>
-                <div class="online-options">
-                    <div class="input-group">
-                        <label for="player-name">Seu Nome:</label>
-                        <input type="text" id="player-name" required>
-                    </div>
-                    <div class="input-group">
-                        <label for="player-age">Sua Idade:</label>
-                        <input type="number" id="player-age" min="1" max="120" required>
-                    </div>
-                    <div class="profile-photo-container">
-                        <label for="profile-photo">Foto de Perfil:</label>
-                        <div class="photo-preview-wrapper">
-                            <img id="profile-photo-preview" src="images/default-profile.png" alt="Foto de perfil">
-                        </div>
-                        <input type="file" id="profile-photo" accept="image/*">
-                    </div>
-                    <div class="input-group">
-                        <label for="online-player-count">Número de Jogadores (2-4):</label>
-                        <input type="number" id="online-player-count" min="2" max="4" value="2">
-                    </div>
-                    <div class="input-group">
-                        <label for="online-rounds">Número de Rodadas (mín. 3):</label>
-                        <input type="number" id="online-rounds" min="3" value="3">
-                    </div>
-                    <div class="input-group">
-                        <label for="online-timeout">Tempo por jogada (segundos):</label>
-                        <input type="number" id="online-timeout" min="10" value="30">
-                    </div>
-                    <button id="create-room" class="btn-primary">Criar Sala</button>
-                    <div class="join-room">
-                        <div class="input-group">
-                            <label for="room-id">Código da Sala:</label>
-                            <input type="text" id="room-id" placeholder="Digite o código da sala">
-                        </div>
-                        <button id="join-room" class="btn-primary">Entrar na Sala</button>
-                    </div>
-                </div>
-            </div>
+      <!-- Tela inicial -->
+      <div id="start-screen" class="screen active">
+        <h1><i class="fas fa-crown"></i> Blackjack Online</h1>
 
-            <!-- Seção Local -->
-            <div class="game-setup">
-                <h2>Jogar Localmente</h2>
-                <div class="input-group">
-                    <label for="player-count">Número de Jogadores (2-4):</label>
-                    <input type="number" id="player-count" min="2" max="4" value="2">
-                </div>
-                <div class="input-group">
-                    <label for="rounds">Número de Rodadas (mín. 3):</label>
-                    <input type="number" id="rounds" min="3" value="3">
-                </div>
-                <div class="input-group">
-                    <label for="timeout">Tempo por jogada (segundos):</label>
-                    <input type="number" id="timeout" min="10" value="30">
-                </div>
-                <div id="player-names-container">
-                    <!-- Player name inputs will be added here dynamically -->
-                </div>
-                <button id="start-game" class="btn-primary">Iniciar Jogo</button>
+        <!-- Seção Online -->
+        <div class="online-section">
+          <h2><i class="fas fa-globe"></i> Jogar Online</h2>
+          <div class="online-options">
+            <div class="input-group">
+              <label for="player-name"
+                ><i class="fas fa-user"></i> Seu Nome:</label
+              >
+              <input
+                type="text"
+                id="player-name"
+                required
+                placeholder="Digite seu nome"
+              />
             </div>
+            <div class="input-group">
+              <label for="player-age"
+                ><i class="fas fa-birthday-cake"></i> Sua Idade:</label
+              >
+              <input
+                type="number"
+                id="player-age"
+                min="1"
+                max="120"
+                required
+                placeholder="Digite sua idade"
+              />
+            </div>
+            <div class="profile-photo-container">
+              <label for="profile-photo"
+                ><i class="fas fa-camera"></i> Foto de Perfil:</label
+              >
+              <div class="photo-preview-wrapper">
+                <img
+                  id="profile-photo-preview"
+                  src="images/default-profile.png"
+                  alt="Foto de perfil"
+                />
+              </div>
+              <input type="file" id="profile-photo" accept="image/*" />
+            </div>
+            <div class="input-group">
+              <label for="online-player-count"
+                ><i class="fas fa-users"></i> Número de Jogadores (2-4):</label
+              >
+              <input
+                type="number"
+                id="online-player-count"
+                min="2"
+                max="4"
+                value="2"
+              />
+            </div>
+            <div class="input-group">
+              <label for="online-rounds"
+                ><i class="fas fa-redo"></i> Número de Rodadas (mín. 3):</label
+              >
+              <input type="number" id="online-rounds" min="3" value="3" />
+            </div>
+            <div class="input-group">
+              <label for="online-timeout"
+                ><i class="fas fa-clock"></i> Tempo por jogada
+                (segundos):</label
+              >
+              <input type="number" id="online-timeout" min="10" value="30" />
+            </div>
+            <button id="create-room" class="btn-primary">
+              <i class="fas fa-plus-circle"></i> Criar Sala
+            </button>
+            <div class="join-room">
+              <div class="input-group">
+                <label for="room-id"
+                  ><i class="fas fa-door-open"></i> Código da Sala:</label
+                >
+                <input
+                  type="text"
+                  id="room-id"
+                  placeholder="Digite o código da sala"
+                />
+              </div>
+              <button id="join-room" class="btn-primary">
+                <i class="fas fa-sign-in-alt"></i> Entrar na Sala
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- Tela de bloqueio de idade -->
-        <div id="age-restriction-screen" class="screen">
-            <div class="age-restriction-container">
-                <img src="D_NQ_NP_970910-MLB74930055279_032024-O-5-placas-local-proibido-acesso-negado-no-entre-sinal-pare.png" alt="Entrada Proibida" class="restriction-image">
-                <h2>Acesso Negado</h2>
-                <p class="restriction-message">Não aposte, estude BITCOIN - Renato money moicano</p>
-                <button id="lie-about-age-btn" class="btn-primary">mentir a idade</button>
-            </div>
+        <!-- Seção Local -->
+        <div class="game-setup">
+          <h2><i class="fas fa-gamepad"></i> Jogar Localmente</h2>
+          <div class="input-group">
+            <label for="player-count"
+              ><i class="fas fa-users"></i> Número de Jogadores (2-4):</label
+            >
+            <input type="number" id="player-count" min="2" max="4" value="2" />
+          </div>
+          <div class="input-group">
+            <label for="rounds"
+              ><i class="fas fa-redo"></i> Número de Rodadas (mín. 3):</label
+            >
+            <input type="number" id="rounds" min="3" value="3" />
+          </div>
+          <div class="input-group">
+            <label for="timeout"
+              ><i class="fas fa-clock"></i> Tempo por jogada (segundos):</label
+            >
+            <input type="number" id="timeout" min="10" value="30" />
+          </div>
+          <div id="player-names-container">
+            <label for="player0">Nome do Jogador 1:</label>
+            <input type="text" id="player0" required />
+
+            <label for="player1">Nome do Jogador 2:</label>
+            <input type="text" id="player1" required />
+          </div>
+          <button id="start-game" class="btn-primary">
+            <i class="fas fa-play"></i> Iniciar Jogo
+          </button>
+        </div>
+      </div>
+
+      <!-- Tela de bloqueio de idade -->
+      <div id="age-restriction-screen" class="screen">
+        <div class="age-restriction-container">
+          <img
+            src="D_NQ_NP_970910-MLB74930055279_032024-O-5-placas-local-proibido-acesso-negado-no-entre-sinal-pare.png"
+            alt="Entrada Proibida"
+            class="restriction-image"
+          />
+          <h2><i class="fas fa-exclamation-triangle"></i> Acesso Negado</h2>
+          <p class="restriction-message">
+            Não aposte, estude BITCOIN - Renato money moicano
+          </p>
+          <button id="lie-about-age-btn" class="btn-primary">
+            <i class="fas fa-user-secret"></i> Mentir a Idade
+          </button>
+        </div>
+      </div>
+
+      <!-- Tela da Sala -->
+      <div id="room-screen" class="screen">
+        <h2><i class="fas fa-door-open"></i> Sala de Jogo</h2>
+        <div id="room-info"></div>
+      </div>
+
+      <!-- Tela do jogo -->
+      <div id="game-screen" class="screen">
+        <div class="game-header">
+          <div class="scores">
+            <h2><i class="fas fa-trophy"></i> Placar</h2>
+            <div id="scoreboard"></div>
+          </div>
+          <div class="game-info">
+            <span id="current-round"
+              ><i class="fas fa-redo"></i> Rodada: 1</span
+            >
+            <span id="current-player"
+              ><i class="fas fa-user"></i> Jogador Atual</span
+            >
+            <span id="timer"><i class="fas fa-clock"></i> 30s</span>
+          </div>
         </div>
 
-        <!-- Tela da Sala -->
-        <div id="room-screen" class="screen">
-            <h2>Sala de Jogo</h2>
-            <div id="room-info"></div>
+        <div class="game-table">
+          <div class="dealer-area">
+            <h3><i class="fas fa-user-tie"></i> Banca</h3>
+            <div id="dealer-cards" class="cards"></div>
+          </div>
+          <div id="players-area" class="players-area">
+            <!-- Player areas will be added here dynamically -->
+          </div>
         </div>
 
-        <!-- Tela do jogo -->
-        <div id="game-screen" class="screen">
-            <div class="game-header">
-                <div class="scores">
-                    <h2>Placar</h2>
-                    <div id="scoreboard"></div>
-                </div>
-                <div class="game-info">
-                    <span id="current-round"></span>
-                    <span id="current-player"></span>
-                    <span id="timer"></span>
-                </div>
-            </div>
-
-            <div class="game-table">
-                <div class="dealer-area">
-                    <h3>Banca</h3>
-                    <div id="dealer-cards" class="cards"></div>
-                </div>
-                <div id="players-area" class="players-area">
-                    <!-- Player areas will be added here dynamically -->
-                </div>
-            </div>
-
-            <div class="game-controls">
-                <button id="hit-btn" class="btn-action">Pedir Carta</button>
-                <button id="stand-btn" class="btn-action">Parar</button>
-                <button id="double-btn" class="btn-action">Dobrar</button>
-            </div>
+        <div class="game-controls">
+          <button id="hit-btn" class="btn-action">
+            <i class="fas fa-plus"></i> Pedir Carta
+          </button>
+          <button id="stand-btn" class="btn-action">
+            <i class="fas fa-hand-paper"></i> Parar
+          </button>
+          <button id="double-btn" class="btn-action">
+            <i class="fas fa-gem"></i> Dobrar
+          </button>
         </div>
+      </div>
 
-        <!-- Tela de resultados -->
-        <div id="results-screen" class="screen">
-            <h2>Resultado da Rodada</h2>
-            <div id="round-results"></div>
-            <button id="next-round" class="btn-primary">Próxima Rodada</button>
-        </div>
+      <!-- Tela de resultados -->
+      <div id="results-screen" class="screen">
+        <h2><i class="fas fa-chart-bar"></i> Resultado da Rodada</h2>
+        <div id="round-results"></div>
+        <button id="next-round" class="btn-primary">
+          <i class="fas fa-forward"></i> Próxima Rodada
+        </button>
+      </div>
 
-        <!-- Tela final -->
-        <div id="final-screen" class="screen">
-            <h2>Fim do Jogo</h2>
-            <div id="final-results"></div>
-            <button id="new-game" class="btn-primary">Novo Jogo</button>
-        </div>
+      <!-- Tela final -->
+      <div id="final-screen" class="screen">
+        <h2><i class="fas fa-flag-checkered"></i> Fim do Jogo</h2>
+        <div id="final-results"></div>
+        <button id="new-game" class="btn-primary">
+          <i class="fas fa-redo"></i> Novo Jogo
+        </button>
+      </div>
     </div>
     <script src="game.js"></script>
-</body>
+  </body>
 </html>
